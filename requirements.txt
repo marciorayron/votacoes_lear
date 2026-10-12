@@ -1,0 +1,11 @@
+# Dependencias do Sistema de Votacao Local
+# Instale com:  pip install -r requirements.txt
+#
+# Nota: rede isolada (sem internet) -> faca o download dos pacotes em uma
+# maquina com acesso e transfira o cache/wheels, ou use:
+#     pip download -r requirements.txt -d ./wheels
+#     pip install --no-index --find-links=./wheels -r requirements.txt
+
+Flask>=3.0,<4.0
+# Servidor WSGI de producao (substitui o servidor de desenvolvimento do Flask).
+waitress>=3.0,<4.0

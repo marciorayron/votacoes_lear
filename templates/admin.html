@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — Votação Local</title>
+  <style>
+    :root {
+      --bg:#0b1220; --card:#111c33; --line:#26375c; --fg:#e8eefc; --muted:#8ea3c9;
+      --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; background:radial-gradient(circle at 50% -10%,#16223d,var(--bg));
+      color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      padding:28px 18px 60px;
+    }
+    .wrap { width:min(1100px,100%); margin:0 auto; }
+    h1 { font-size:1.6rem; margin:0 0 4px; }
+    .muted { color:var(--muted); }
+    .hidden { display:none !important; }
+
+    /* Unlock */
+    #unlock { max-width:520px; margin:12vh auto 0; background:var(--card); border:1px solid var(--line);
+              border-radius:20px; padding:32px; text-align:center; }
+    #unlock h2 { margin:0 0 8px; }
+    #unlock input {
+      width:100%; margin-top:18px; padding:14px 16px; border-radius:12px; border:1px solid var(--line);
+      background:#0a1526; color:var(--fg); font-size:1rem; outline:none;
+    }
+    #unlock input:focus { border-color:var(--accent); }
+
+    /* Layout */
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;
+              margin-bottom:22px; }
+    .grid { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; }
+    @media (max-width:900px){ .grid { grid-template-columns:1fr; } }
+
+    .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:24px; }
+    .card h3 { margin:0 0 16px; font-size:1.1rem; display:flex; align-items:center; gap:8px; }
+
+    label.field { display:block; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+                  color:var(--muted); margin:16px 0 8px; }
+    input[type=text], textarea {
+      width:100%; padding:13px 15px; border-radius:12px; border:1px solid var(--line);
+      background:#0a1526; color:var(--fg); font-size:1rem; outline:none; font-family:inherit;
+    }
+    input[type=text]:focus, textarea:focus { border-color:var(--accent); }
+    textarea { resize:vertical; min-height:74px; }
+
+    .option-row { display:flex; gap:10px; margin-bottom:10px; }
+    .option-row input { flex:1; }
+    .icon-btn { border:1px solid var(--line); background:#0a1526; color:var(--muted); border-radius:12px;
+                width:48px; font-size:1.2rem; cursor:pointer; transition:.12s; }
+    .icon-btn:hover { border-color:var(--err); color:var(--err); }
+
+    button.btn { border:none; border-radius:12px; padding:13px 22px; font-size:.98rem; font-weight:700;
+                 cursor:pointer; transition:.12s; }
+    button.btn:active { transform:scale(.98); }
+    .btn.primary { background:var(--accent); color:#04263a; }
+    .btn.ok      { background:var(--ok); color:#04210f; }
+    .btn.warn    { background:var(--warn); color:#3b2603; }
+    .btn.ghost   { background:#0a1526; color:var(--fg); border:1px solid var(--line); }
+    .btn.danger  { background:var(--err); color:#2a0606; }
+    .btn.report  { background:#1d4ed8; color:#ffffff; border:1px solid #1d4ed8; }
+    .btn.report.highlight { background:var(--ok); color:#04210f; border-color:var(--ok);
+                            box-shadow:0 0 0 3px rgba(34,197,94,.28); }
+    .btn.small   { padding:8px 14px; font-size:.85rem; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+
+    .actions-bar { display:flex; gap:12px; flex-wrap:wrap; margin-top:22px; }
+
+    /* Estado / contadores */
+    .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .stat-box { background:#0a1526; border:1px solid var(--line); border-radius:14px; padding:16px;
+                text-align:center; }
+    .stat-box .v { font-size:1.9rem; font-weight:900; }
+    .stat-box .l { color:var(--muted); font-size:.78rem; margin-top:6px; }
+
+    .poll-q { font-size:1.05rem; font-weight:700; margin:4px 0 16px; line-height:1.35; }
+    .bar-list { display:flex; flex-direction:column; gap:12px; }
+    .bar-item .top { display:flex; justify-content:space-between; font-size:.92rem; margin-bottom:5px; }
+    .bar-item .track { height:22px; background:#0a1526; border:1px solid var(--line);
+                       border-radius:99px; overflow:hidden; }
+    .bar-item .fill { height:100%; background:linear-gradient(90deg,#38bdf8,#22c55e); width:0;
+                      transition:width .35s ease; }
+
+    .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#0f2236;
+             border:1px solid var(--line); border-radius:12px; padding:14px 22px; font-weight:600;
+             box-shadow:0 12px 30px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:.25s; z-index:50; }
+    .toast.show { opacity:1; }
+    .toast.ok { border-color:var(--ok); }
+    .toast.err { border-color:var(--err); }
+    .hint { font-size:.82rem; color:var(--muted); margin-top:10px; line-height:1.5; word-break:break-all; }
+  </style>
+</head>
+
+<body>
+  <!-- ===================== Unlock ===================== -->
+  <section id="unlock">
+    <h2>🔐 Painel Administrativo</h2>
+    <p class="muted">Informe o <b>Device Token</b> para liberar o acesso.<br>
+       O token aparece no console do servidor ao iniciar.</p>
+    <input id="token-input" type="password" placeholder="X-Device-Token" autocomplete="off" />
+    <div class="actions-bar" style="justify-content:center;">
+      <button class="btn primary" id="unlock-btn">Desbloquear</button>
+      <button class="btn ghost" id="forget-btn">Esquecer token</button>
+    </div>
+    <div class="hint" id="unlock-hint"></div>
+  </section>
+
+  <!-- ===================== Painel ===================== -->
+  <div class="wrap hidden" id="panel">
+    <div class="topbar">
+      <div>
+        <h1>Painel Administrativo</h1>
+        <div class="muted" id="clock">–</div>
+      </div>
+      <div class="actions-bar" style="margin:0;">
+        <button class="btn ghost" id="refresh-btn">↻ Atualizar</button>
+        <button class="btn ghost" id="lock-btn">Bloquear</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Coluna esquerda: configuração -->
+      <div class="card">
+        <h3>🗳️ Novo plebiscito</h3>
+        <label class="field" for="question">Pergunta</label>
+        <textarea id="question" placeholder="Ex.: Aprova a adoção do novo horário de turno?"></textarea>
+
+        <label class="field">Opções (mínimo 2)</label>
+        <div id="options-list"></div>
+        <div class="actions-bar" style="margin-top:0;">
+          <button class="btn ghost small" id="add-option">+ Adicionar opção</button>
+          <button class="btn ghost small" id="preset-yesno">Sim / Não</button>
+        </div>
+
+        <div class="actions-bar">
+          <button class="btn primary" id="start-btn">▶ Iniciar plebiscito</button>
+        </div>
+        <div class="hint">Iniciar um novo plebiscito encerra o anterior, zera os contadores
+          e libera todos os crachás para votar novamente.</div>
+      </div>
+
+      <!-- Coluna direita: estado -->
+      <div class="card">
+        <h3>📊 Estado atual</h3>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="v" id="s-tokens">0</div><div class="l">Tokens (fila)</div></div>
+          <div class="stat-box"><div class="v" id="s-voters">0</div><div class="l">Check-ins</div></div>
+          <div class="stat-box"><div class="v" id="s-total">0</div><div class="l">Votos</div></div>
+        </div>
+
+        <div style="margin-top:22px;">
+          <div class="poll-q" id="cur-question">Nenhum plebiscito ativo.</div>
+          <div class="bar-list" id="cur-bars"></div>
+        </div>
+
+        <div class="actions-bar">
+          <button class="btn warn" id="reset-btn">⟲ Zerar contadores</button>
+          <button class="btn danger" id="close-btn">■ Encerrar votação</button>
+          <button class="btn report" id="report-btn"
+                  title="Abre a Ata de Fechamento em A4 (Salvar como PDF)">🧾 Gerar Relatório / Ata de Fechamento</button>
+        </div>
+        <div class="hint" id="cur-meta"></div>
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:18px;">
+      Rotas públicas: <b>/checkin</b> · <b>/cabine</b> · <b>/painel-tv</b> ·
+      Delay de resultados: <b id="cfg-delay">–</b>s · Cooldown check-in: <b id="cfg-cooldown">–</b>s
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const PREFILL_TOKEN = {{ prefill_token|tojson }};
+    const TOKEN_KEY = 'votacao_device_token';
+
+    const unlockSection = document.getElementById('unlock');
+    const panelSection  = document.getElementById('panel');
+    const tokenInput    = document.getElementById('token-input');
+    const unlockHint    = document.getElementById('unlock-hint');
+    const optionsList   = document.getElementById('options-list');
+    const toastEl       = document.getElementById('toast');
+
+    let token = '';
+    let refreshTimer = null;
+
+    // ------------------ Utilidades ------------------
+    function toast(message, kind) {
+      toastEl.textContent = message;
+      toastEl.className = 'toast show ' + (kind || '');
+      clearTimeout(toastEl._t);
+      toastEl._t = setTimeout(() => { toastEl.className = 'toast ' + (kind || ''); }, 2600);
+    }
+
+    async function api(path, method = 'GET', body = null) {
+      const opts = {
+        method,
+        headers: { 'X-Device-Token': token, 'Cache-Control': 'no-store' },
+        cache: 'no-store'
+      };
+      if (body !== null) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('unauthorized');
+      if (!res.ok && !data.error) throw new Error('http_' + res.status);
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    // ------------------ Opções dinamicas ------------------
+    function addOption(value) {
+      const row = document.createElement('div');
+      row.className = 'option-row';
+      row.innerHTML =
+        '<input type="text" placeholder="Texto da opção" value="" />' +
+        '<button class="icon-btn" title="Remover">✕</button>';
+      row.querySelector('input').value = value || '';
+      row.querySelector('.icon-btn').addEventListener('click', () => row.remove());
+      optionsList.appendChild(row);
+      return row;
+    }
+
+    function setPresetYesNo() {
+      optionsList.innerHTML = '';
+      addOption('Sim');
+      addOption('Não');
+    }
+
+    function collectOptions() {
+      return Array.from(optionsList.querySelectorAll('input'))
+        .map(i => i.value.trim())
+        .filter(v => v.length > 0);
+    }
+    // ------------------ Render do estado ------------------
+    function renderState(s) {
+      document.getElementById('s-tokens').textContent = s.voting_tokens ?? 0;
+      document.getElementById('s-voters').textContent = s.voters_checked_in ?? 0;
+      document.getElementById('cfg-delay').textContent = s.results_delay ?? '–';
+      document.getElementById('cfg-cooldown').textContent = s.cooldown ?? '–';
+
+      const qEl   = document.getElementById('cur-question');
+      const barEl = document.getElementById('cur-bars');
+      const meta  = document.getElementById('cur-meta');
+
+      if (!s.poll) {
+        qEl.textContent = 'Nenhum plebiscito ativo.';
+        barEl.innerHTML = '';
+        meta.textContent = '';
+        document.getElementById('s-total').textContent = '0';
+        document.getElementById('report-btn').classList.remove('highlight');
+        return;
+      }
+
+      document.getElementById('s-total').textContent = s.poll.total_votes;
+      // Destaca a Ata de Fechamento quando o plebiscito esta encerrado.
+      document.getElementById('report-btn').classList.toggle('highlight',
+        s.poll.status === 'closed');
+      qEl.textContent = s.poll.question +
+        (s.poll.status === 'open' ? '  (EM ANDAMENTO)' : '  (ENCERRADO)');
+
+      const max = Math.max(1, ...s.poll.options.map(o => o.count));
+      barEl.innerHTML = '';
+      s.poll.options.forEach(o => {
+        const pct = ((o.count / max) * 100).toFixed(1);
+        const item = document.createElement('div');
+        item.className = 'bar-item';
+        item.innerHTML =
+          '<div class="top"><span>' + escapeHtml(o.label) + '</span><span>' + o.count + '</span></div>' +
+          '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div>';
+        barEl.appendChild(item);
+      });
+
+      meta.textContent = 'Iniciado em ' + (s.poll.created_at || '–') +
+        (s.poll.closed_at ? ' · encerrado em ' + s.poll.closed_at : '') +
+        ' · poll id ' + s.poll.id;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    async function refreshState(showError) {
+      try {
+        const { data } = await api('/api/admin/state');
+        renderState(data);
+        document.getElementById('clock').textContent = 'Servidor: ' + (data.server_time || '–');
+      } catch (err) {
+        if (err.message === 'unauthorized') { lock('Token inválido ou expirado.'); return; }
+        if (showError) toast('Falha ao consultar o servidor.', 'err');
+      }
+    }
+
+    // ------------------ Bloqueio / desbloqueio ------------------
+    function startAutoRefresh() {
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => refreshState(false), 3000);
+    }
+
+    function unlock() {
+      token = (tokenInput.value || '').trim();
+      if (!token) { unlockHint.textContent = 'Informe um token.'; return; }
+      unlockHint.textContent = 'Validando…';
+      api('/api/admin/state')
+        .then(({ data }) => {
+          sessionStorage.setItem(TOKEN_KEY, token);
+          unlockSection.classList.add('hidden');
+          panelSection.classList.remove('hidden');
+          renderState(data);
+          startAutoRefresh();
+          toast('Acesso liberado.', 'ok');
+        })
+        .catch(err => {
+          unlockHint.textContent = err.message === 'unauthorized'
+            ? 'Token recusado. Confira o valor exibido no console do servidor.'
+            : 'Não foi possível contatar o servidor.';
+        });
+    }
+
+    function lock(message) {
+      clearInterval(refreshTimer);
+      token = '';
+      sessionStorage.removeItem(TOKEN_KEY);
+      panelSection.classList.add('hidden');
+      unlockSection.classList.remove('hidden');
+      tokenInput.value = '';
+      unlockHint.textContent = message || '';
+      tokenInput.focus();
+    }
+    // ------------------ Ações ------------------
+    async function startPoll() {
+      const question = document.getElementById('question').value.trim();
+      const options  = collectOptions();
+
+      if (!question) { toast('Informe a pergunta.', 'err'); return; }
+      if (options.length < 2) { toast('Informe ao menos 2 opções.', 'err'); return; }
+
+      const btn = document.getElementById('start-btn');
+      btn.disabled = true;
+      try {
+        const { data } = await api('/api/admin/poll', 'POST', { question, options });
+        renderState(data);
+        toast('Plebiscito iniciado.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Erro ao iniciar o plebiscito.', 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function resetPoll() {
+      if (!confirm('Zerar os contadores do plebiscito atual? Todos os crachás deverão fazer check-in novamente.')) return;
+      try {
+        const { data } = await api('/api/admin/reset', 'POST', { clear_voters: true });
+        renderState(data);
+        toast('Contadores zerados.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Nada a zerar (sem plebiscito ativo?)', 'err');
+      }
+    }
+
+    async function closePoll() {
+      if (!confirm('Encerrar a votação atual? As cabines deixarão de registrar votos.')) return;
+      try {
+        const { data } = await api('/api/admin/close', 'POST');
+        renderState(data);
+        toast('Votação encerrada.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Nada a encerrar (sem plebiscito ativo?)', 'err');
+      }
+    }
+
+    function openReport() {
+      if (!token) { toast('Sessão bloqueada.', 'err'); return; }
+      // Abre a Ata de Fechamento (A4) em nova aba; salvar como PDF via impressao.
+      window.open('/admin/relatorio?token=' + encodeURIComponent(token), '_blank');
+    }
+
+    // ------------------ Wiring ------------------
+    document.getElementById('unlock-btn').addEventListener('click', unlock);
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
+    document.getElementById('forget-btn').addEventListener('click', () => lock('Token removido.'));
+    document.getElementById('lock-btn').addEventListener('click', () => lock('Sessão bloqueada.'));
+    document.getElementById('refresh-btn').addEventListener('click', () => refreshState(true));
+    document.getElementById('add-option').addEventListener('click', () => addOption(''));
+    document.getElementById('preset-yesno').addEventListener('click', setPresetYesNo);
+    document.getElementById('start-btn').addEventListener('click', startPoll);
+    document.getElementById('reset-btn').addEventListener('click', resetPoll);
+    document.getElementById('close-btn').addEventListener('click', closePoll);
+    document.getElementById('report-btn').addEventListener('click', openReport);
+
+    // ------------------ Init ------------------
+    (function init() {
+      setPresetYesNo();
+      const stored = sessionStorage.getItem(TOKEN_KEY);
+      if (PREFILL_TOKEN) {
+        tokenInput.value = PREFILL_TOKEN;
+      } else if (stored) {
+        tokenInput.value = stored;
+      }
+      if (tokenInput.value) unlock();
+      else { unlockHint.textContent = ''; tokenInput.focus(); }
+    })();
+  </script>
+</body>
+</html>
