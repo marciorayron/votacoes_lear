@@ -1,65 +1,103 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Votação Local — Índice</title>
-  <style>
-    :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --fg:#e2e8f0; --accent:#38bdf8; }
-    * { box-sizing:border-box; }
-    body {
-      margin:0; min-height:100vh; background:radial-gradient(circle at top,#1e293b,var(--bg));
-      color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-      display:flex; align-items:center; justify-content:center; padding:24px;
-    }
-    .wrap { width:min(900px,100%); }
-    h1 { font-size:clamp(1.6rem,3vw,2.4rem); margin:0 0 6px; }
-    p.sub { color:#94a3b8; margin:0 0 28px; }
-    .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-    a.card {
-      display:block; text-decoration:none; color:inherit; background:var(--card);
-      border:1px solid var(--line); border-radius:16px; padding:22px; transition:.15s;
-    }
-    a.card:hover { transform:translateY(-3px); border-color:var(--accent); }
-    a.card h2 { margin:0 0 8px; font-size:1.25rem; }
-    a.card span { color:#94a3b8; font-size:.92rem; line-height:1.4; display:block; }
-    .badge { display:inline-block; margin-top:14px; font-size:.78rem; letter-spacing:.04em;
-             text-transform:uppercase; color:var(--accent); }
-    footer { margin-top:28px; color:#64748b; font-size:.85rem; }
-    code { background:#0b1220; padding:2px 6px; border-radius:6px; }
-  </style>
+  <title>Votação Local — Hub de Controle</title>
+  <!-- Tema global: theme.js aplica data-theme no <head> para evitar FOUC. -->
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}" />
 </head>
 <body>
-  <div class="wrap">
-    <h1>Sistema de Votação Local</h1>
-    <p class="sub">Rede isolada · terminais de votação, check-in e resultados em tempo controlado.</p>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">🗳️</span><span>Votação Local</span></div>
+      <nav class="nav">
+        <a class="nav-item active" href="{{ url_for('index') }}">🏠 Hub / Início</a>
+        <a class="nav-item" href="{{ url_for('checkin_page') }}">🪪 Check-in<span class="nav-hint">/checkin</span></a>
+        <a class="nav-item" href="{{ url_for('cabine_page') }}">🗳️ Cabine<span class="nav-hint">/cabine</span></a>
+        <a class="nav-item" href="{{ url_for('painel_tv_page') }}">📺 Painel TV<span class="nav-hint">/painel-tv</span></a>
+        <a class="nav-item" href="{{ url_for('admin_page') }}">🔐 Admin<span class="nav-hint">/admin</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="theme-toggle" id="theme-toggle" type="button">🌙 Modo escuro</button>
+      </div>
+    </aside>
 
-    <div class="grid">
-      <a class="card" href="{{ url_for('checkin_page') }}">
-        <h2>🪪 Check-in</h2>
-        <span>Mesa de credenciamento no servidor com leitor NFC (cooldown {{ cooldown }}s).</span>
-        <span class="badge">/checkin</span>
-      </a>
-      <a class="card" href="{{ url_for('cabine_page') }}">
-        <h2>🗳️ Cabine</h2>
-        <span>Terminal touch para votar (kiosk mode).</span>
-        <span class="badge">/cabine</span>
-      </a>
-      <a class="card" href="{{ url_for('painel_tv_page') }}">
-        <h2>📺 Painel TV</h2>
-        <span>Resultados anônimos com atraso controlado de {{ results_delay }}s.</span>
-        <span class="badge">/painel-tv</span>
-      </a>
-      <a class="card" href="{{ url_for('admin_page') }}">
-        <h2>🔐 Admin</h2>
-        <span>Criar, resetar e encerrar plebiscitos (requer Device Token).</span>
-        <span class="badge">/admin</span>
-      </a>
-    </div>
+    <main class="content">
+      <header class="content-head">
+        <div>
+          <h1>Hub de Controle</h1>
+          <div class="muted" id="clock">–</div>
+        </div>
+        <div class="actions">
+          <span class="pill"><span class="dot" id="overall-dot"></span><span id="overall-text">Conectando…</span></span>
+          <button class="btn" id="refresh-btn" type="button">↻ Atualizar</button>
+        </div>
+      </header>
 
-    <footer>
-      Dica: acesse o admin com <code>/admin?token=SEU_TOKEN</code> ou informe o token na tela de unlock.
-    </footer>
+      <section class="status-strip" aria-label="Resumo do sistema">
+        <div class="mini"><span class="mini-v" id="m-poll">–</span><span class="mini-l">Plebiscito</span></div>
+        <div class="mini"><span class="mini-v" id="m-tokens">–</span><span class="mini-l">Liberados p/ votar</span></div>
+        <div class="mini"><span class="mini-v" id="m-booths">–</span><span class="mini-l">Cabines online</span></div>
+        <div class="mini"><span class="mini-v" id="m-votes">–</span><span class="mini-l">Votos apurados</span></div>
+      </section>
+
+      <div class="grid">
+        <a class="card" href="{{ url_for('checkin_page') }}">
+          <div class="card-top">
+            <span class="card-icon">🪪</span>
+            <span class="card-status"><span class="dot" id="st-checkin"></span><span id="st-checkin-txt">…</span></span>
+          </div>
+          <h2>Check-in</h2>
+          <p>Mesa de credenciamento no servidor com leitor NFC. Cooldown anti duplo-swap de <b>{{ cooldown }}s</b>.</p>
+          <span class="badge">/checkin</span>
+        </a>
+
+        <a class="card" href="{{ url_for('cabine_page') }}">
+          <div class="card-top">
+            <span class="card-icon">🗳️</span>
+            <span class="card-status"><span class="dot" id="st-cabine"></span><span id="st-cabine-txt">…</span></span>
+          </div>
+          <h2>Cabine</h2>
+          <p>Terminal touch para votar (kiosk mode). Interface otimizada para tablets e monitores de toque.</p>
+          <span class="badge">/cabine</span>
+        </a>
+
+        <a class="card" href="{{ url_for('painel_tv_page') }}">
+          <div class="card-top">
+            <span class="card-icon">📺</span>
+            <span class="card-status"><span class="dot" id="st-painel"></span><span id="st-painel-txt">…</span></span>
+          </div>
+          <h2>Painel TV</h2>
+          <p>Resultados anônimos com atraso controlado de <b>{{ results_delay }}s</b>.</p>
+          <span class="badge">/painel-tv</span>
+        </a>
+
+        <a class="card" href="{{ url_for('admin_page') }}">
+          <div class="card-top">
+            <span class="card-icon">🔐</span>
+            <span class="card-status"><span class="dot" id="st-admin"></span><span id="st-admin-txt">…</span></span>
+          </div>
+          <h2>Admin</h2>
+          <p>Criar, resetar e encerrar plebiscitos. Relatórios e ata de fechamento.</p>
+          <span class="badge">/admin</span>
+        </a>
+      </div>
+
+      <footer class="page-foot">
+        Dica: acesse o admin com <code>/admin?token=SEU_TOKEN</code> ou informe o token na tela de unlock.
+      </footer>
+    </main>
   </div>
+  <script>
+    // Configuração vinda do servidor (Jinja).
+    window.VOTACAO_RESULTS_DELAY = {{ results_delay }};
+  </script>
+  <script src="{{ url_for('static', filename='js/index.js') }}"></script>
 </body>
 </html>
+
+
+

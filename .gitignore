@@ -1,0 +1,20 @@
+# Bytecode / cache do Python
+__pycache__/
+*.py[cod]
+
+# Bancos SQLite temporarios / WAL
+*votacao_*.db
+*votacao_*.db-wal
+*votacao_*.db-shm
+voting.db
+voting.db-wal
+voting.db-shm
+
+# Ambientes virtuais
+.venv/
+venv/
+
+# Arquivos de editor / SO
+.vscode/
+.idea/
+.DS_Store

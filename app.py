@@ -335,6 +335,18 @@ def init_db() -> None:
         conn.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('active_poll_id', '')"
         )
+        # ------------------------------------------------------------------ #
+        # Reset do estado VOLATIL de runtime a cada boot do servidor.
+        # Evita que check-ins/reservas orfaos de execucoes anteriores deixem a
+        # fila de tokens "presa" ou cabines travadas como ocupadas.
+        # NAO toca em dados persistentes: polls, votos, historico e crachas
+        # (voters) permanecem intactos.
+        # ------------------------------------------------------------------ #
+        conn.execute("UPDATE booths SET status = 'idle', busy_until = NULL")
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES('voting_tokens', '0') "
+            "ON CONFLICT(key) DO UPDATE SET value = '0'"
+        )
         conn.commit()
     except sqlite3.Error as exc:
         print(f"[db] ERRO ao criar/atualizar o schema em '{DB_PATH}': {exc}")
@@ -958,9 +970,44 @@ def api_booth_status():
     }
     booth_id = request.args.get("booth_id", "").strip()
     if booth_id:
-        booth = get_booth(db, booth_id)
-        payload["booth"] = booth
-        payload["assigned"] = bool(booth and booth["assigned"])
+        with _DB_LOCK:
+            # Reavalia sob o lock: um token "solto" (check-in em que NENHUMA
+            # cabine conseguiu ser reservada -> fallback global) deve ser
+            # assumido pela primeira cabine ONLINE e OCIOSA que consultar o
+            # status, em vez de deixa-la presa em "Aguardando a sua vez".
+            poll = get_open_poll(db)
+            tokens = get_voting_tokens(db)
+            payload["voting_tokens"] = tokens
+            payload["available"] = tokens > 0 and poll is not None
+            payload["poll_open"] = poll is not None
+            payload["poll_id"] = poll["id"] if poll else None
+
+            booth = get_booth(db, booth_id)
+            assigned = bool(booth and booth["assigned"])
+            # Reserva dirigida a ESTA cabine OU token global sem dono: aloca.
+            # Nunca travamos uma cabine online/ociosa enquanto houver token
+            # sem reserva na fila.
+            if (not assigned and booth is not None and booth["idle"]
+                    and poll is not None and tokens > 0):
+                reserved = sum(1 for b in list_booths(db) if b["assigned"])
+                if tokens > reserved:   # sobra token sem reserva -> fallback global
+                    booth = touch_booth(db, booth_id, "voting",
+                                        client_ip=_client_ip())
+                    assigned = bool(booth and booth["assigned"])
+
+            payload["booth"] = booth
+            payload["assigned"] = assigned
+            if assigned and poll is not None:
+                # Detalhes do plebiscito na propria resposta: a cabine pode
+                # renderizar direto, sem depender de um fetch extra a /api/poll.
+                payload["active_poll"] = {
+                    "id": poll["id"],
+                    "question": poll["question"],
+                    "options": [
+                        {"id": o.get("id"), "label": o.get("label", "")}
+                        for o in poll["options"]
+                    ],
+                }
     return jsonify(payload)
 
 
@@ -1262,6 +1309,62 @@ def _admin_state(db: sqlite3.Connection) -> dict:
     }
 
 
+def _preserved_voters(db: sqlite3.Connection, poll_id: int) -> Optional[int]:
+    """Votantes unicos preservados de um plebiscito (ou None se desconhecido).
+
+    Ao encerrar/trocar de plebiscito a tabela `voters` e limpa; o total e
+    guardado em settings (chave `closed_poll_voters:<id>`) para a Ata e para
+    o historico. Retorna None quando nao ha valor persistido.
+    """
+    stored = get_setting(db, _closed_voters_key(poll_id), "").strip()
+    if not stored:
+        return None
+    try:
+        return int(stored)
+    except ValueError:
+        return None
+
+
+def history_payload(db: sqlite3.Connection) -> dict:
+    """Historico dos plebiscitos registrados, do mais recente ao mais antigo.
+
+    Cada item traz a pergunta, o status, os timestamps e as estatisticas
+    agregadas (votos por opcao com percentual, total de votos e, quando
+    conhecido, o numero de votantes unicos). Somente leitura.
+    """
+    active_id = get_active_poll_id(db)
+    rows = db.execute("SELECT * FROM polls ORDER BY id DESC").fetchall()
+
+    elections: list[dict] = []
+    for row in rows:
+        try:
+            raw_options = json.loads(row["options"])
+        except (TypeError, ValueError):
+            raw_options = []
+        counts = tally_votes(db, row["id"])
+        options = votes_per_option({"options": raw_options}, counts)
+        total = sum(opt["count"] for opt in options)
+        for opt in options:
+            opt["percent"] = round(
+                (opt["count"] / total * 100) if total else 0.0, 1
+            )
+        elections.append(
+            {
+                "id": row["id"],
+                "question": row["question"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "closed_at": row["closed_at"],
+                "active": row["id"] == active_id,
+                "options": options,
+                "total_votes": total,
+                "voters": _preserved_voters(db, row["id"]),
+            }
+        )
+
+    return {"ok": True, "count": len(elections), "elections": elections}
+
+
 @app.get("/api/admin/state")
 @require_device_token
 def api_admin_state():
@@ -1456,6 +1559,100 @@ def api_admin_remove_booth(booth_id: str):
         state = _admin_state(db)
     state["detail"] = "Cabine removida. O dispositivo precisara parear novamente."
     return jsonify(state)
+
+
+# --------------------------------------------------------------------------- #
+# API: Historico e gerenciamento do banco (protegido por X-Device-Token)
+# --------------------------------------------------------------------------- #
+PURGE_SCOPES = ("all", "logs")
+
+
+@app.get("/api/admin/history")
+@require_device_token
+def api_admin_history():
+    """Historico dos plebiscitos (somente leitura).
+
+    Devolve todos os plebiscitos registrados, do mais recente ao mais antigo,
+    com as estatisticas agregadas de cada um (votos por opcao, total de votos
+    e votantes unicos quando conhecidos). Usado pela secao "Banco de Dados &
+    Historico" do painel administrativo.
+    """
+    db = get_db()
+    return jsonify(history_payload(db))
+
+
+@app.delete("/api/admin/db/purge")
+@require_device_token
+def api_admin_db_purge():
+    """Remove dados de TESTE do banco (acao destrutiva e IRREVERSIVEL).
+
+    Exige confirmacao explicita, via query ``?confirm=1`` ou body JSON
+    ``{"confirm": true}``. O escopo vem de ``?scope=`` ou do body
+    (``{"scope": "all"|"logs"}``):
+
+      * ``all``  (default): apaga TODOS os plebiscitos, votos e check-ins e
+        reinicia o ponteiro do plebiscito ativo e a fila de tokens;
+      * ``logs``: apaga apenas votos e check-ins (crachas), preservando os
+        plebiscitos cadastrados.
+
+    Retorna o estado do painel e o historico resultantes, prontos para
+    re-renderizacao no cliente.
+    """
+    data = request.get_json(silent=True) or {}
+
+    raw_confirm = data.get("confirm")
+    if raw_confirm is None:
+        raw_confirm = request.args.get("confirm", "")
+    confirmed = str(raw_confirm).strip().lower() in ("1", "true", "yes", "sim", "purge")
+    if not confirmed:
+        return _user_error(
+            "confirmation_required", 400,
+            detail="Envie confirmacao explicita (confirm=1) para purgar o banco.",
+        )
+
+    scope = str(data.get("scope") or request.args.get("scope") or "all").strip().lower()
+    if scope not in PURGE_SCOPES:
+        return _user_error("invalid_scope", 400)
+
+    with _DB_LOCK:
+        db = get_db()
+        removed_votes = db.execute("SELECT COUNT(*) AS c FROM votes").fetchone()["c"]
+        removed_voters = db.execute("SELECT COUNT(*) AS c FROM voters").fetchone()["c"]
+        removed_polls = db.execute("SELECT COUNT(*) AS c FROM polls").fetchone()["c"]
+
+        db.execute("DELETE FROM votes")
+        db.execute("DELETE FROM voters")
+        if scope == "all":
+            db.execute("DELETE FROM polls")
+            db.execute(
+                "DELETE FROM settings WHERE key LIKE 'closed_poll_voters:%'"
+            )
+            set_setting(db, "active_poll_id", "")
+            set_voting_tokens(db, 0)
+            # Reinicia os contadores AUTOINCREMENT para um banco realmente limpo.
+            try:
+                db.execute(
+                    "DELETE FROM sqlite_sequence WHERE name IN ('polls', 'votes')"
+                )
+            except sqlite3.Error:
+                pass  # tabela sqlite_sequence ausente em bancos sem AUTOINCREMENT
+        db.commit()
+
+        state = _admin_state(db)
+        history = history_payload(db)
+
+    return jsonify({
+        "ok": True,
+        "scope": scope,
+        "removed": {
+            "votes": removed_votes,
+            "voters": removed_voters,
+            "polls": removed_polls if scope == "all" else 0,
+        },
+        "state": state,
+        "history": history,
+        "detail": "Banco de dados purgado (dados de teste removidos).",
+    })
 
 
 # --------------------------------------------------------------------------- #

@@ -4,65 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Check-in — Votação Local</title>
-  <style>
-    :root {
-      --bg:#0b1220; --card:#111c33; --line:#26375c; --fg:#e8eefc; --muted:#8ea3c9;
-      --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --accent:#38bdf8;
-    }
-    * { box-sizing:border-box; }
-    html,body { height:100%; }
-    body {
-      margin:0; background:radial-gradient(circle at 50% -10%,#16223d,var(--bg));
-      color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      padding:4vh 4vw; gap:22px;
-    }
-    h1 { margin:0; font-size:clamp(1.6rem,3.4vw,2.6rem); letter-spacing:.02em; }
-    .lede { margin:0; color:var(--muted); font-size:clamp(.95rem,1.5vw,1.15rem); text-align:center; }
-
-    .panel {
-      width:min(760px,94vw); background:var(--card); border:1px solid var(--line);
-      border-radius:22px; padding:clamp(20px,3vw,38px); box-shadow:0 24px 60px rgba(0,0,0,.45);
-    }
-    label { display:block; font-size:.85rem; text-transform:uppercase; letter-spacing:.08em;
-            color:var(--muted); margin-bottom:12px; }
-    input#badge {
-      width:100%; font-size:clamp(1.4rem,3.6vw,2.6rem); font-weight:700; letter-spacing:.05em;
-      padding:18px 22px; border-radius:16px; border:2px solid var(--line); background:#0a1526;
-      color:var(--fg); outline:none; transition:border-color .15s, box-shadow .15s;
-    }
-    input#badge:focus { border-color:var(--accent); box-shadow:0 0 0 4px rgba(56,189,248,.18); }
-    input#badge:disabled { opacity:.55; }
-
-    .status {
-      margin-top:22px; border-radius:16px; padding:20px 22px; font-size:clamp(1.05rem,2.2vw,1.5rem);
-      font-weight:700; display:flex; align-items:center; gap:14px; min-height:74px;
-      border:1px solid var(--line); background:#0a1526; transition:background .2s,border-color .2s;
-    }
-    .status .dot { width:16px; height:16px; border-radius:50%; background:var(--muted); flex:none; }
-    .status .msg { font-weight:600; }
-    .status small { display:block; font-weight:400; font-size:.85em; color:var(--muted); margin-top:4px; }
-    .status.ok   { border-color:var(--ok);   background:rgba(34,197,94,.12); }
-    .status.ok   .dot { background:var(--ok); }
-    .status.warn { border-color:var(--warn); background:rgba(245,158,11,.12); }
-    .status.warn .dot { background:var(--warn); }
-    .status.err  { border-color:var(--err);  background:rgba(239,68,68,.12); }
-    .status.err  .dot { background:var(--err); }
-    .status.info .dot { background:var(--accent); }
-
-    .meta { display:flex; flex-wrap:wrap; gap:14px 28px; justify-content:space-between;
-            margin-top:18px; color:var(--muted); font-size:.95rem; }
-    .meta b { color:var(--fg); font-size:1.35rem; display:block; }
-    .cooldown-bar { height:8px; border-radius:99px; background:#0a1526; overflow:hidden;
-                    border:1px solid var(--line); margin-top:18px; }
-    .cooldown-bar > i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#38bdf8,#22c55e);
-                        transition:width .1s linear; }
-    footer { color:#5b6b8a; font-size:.82rem; text-align:center; }
-    a { color:var(--accent); }
-    .sound-toggle { background:transparent; border:1px solid var(--line); color:var(--muted);
-                    border-radius:99px; padding:2px 12px; font:inherit; font-size:.82rem; cursor:pointer; }
-    .sound-toggle:hover { color:var(--fg); border-color:var(--accent); }
-  </style>
+  <!-- Tema global: theme.js aplica data-theme no <head> para evitar FOUC. -->
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/checkin.css') }}" />
 </head>
 <body>
   <h1>Check-in de Eleitor 🪪</h1>
@@ -72,6 +17,12 @@
     <label for="badge">Crachá (leitor NFC)</label>
     <input id="badge" type="text" autocomplete="off" autocapitalize="off"
            spellcheck="false" placeholder="Aguardando leitura..." autofocus />
+
+    <div id="booth-banner" class="booth-banner" role="status" aria-live="assertive">
+      <div class="cap">Dirija-se à</div>
+      <div class="num" id="booth-number">—</div>
+      <div class="sub" id="booth-sub"></div>
+    </div>
 
     <div id="status" class="status info" role="status" aria-live="polite">
       <span class="dot"></span>
@@ -89,183 +40,14 @@
 
   <footer>Cooldown anti duplo-swap: <b id="cooldown-label">{{ cooldown }}</b>s ·
     <a href="{{ url_for('painel_tv_page') }}">Painel TV</a> ·
-    <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="true">🔊 Som</button></footer>
+    <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="true">🔊 Som</button>
+    <button id="theme-toggle" class="sound-toggle" type="button">🌙 Tema</button></footer>
 
 
   <script>
-    const COOLDOWN_MS = Math.round({{ cooldown }} * 1000);
-    const badgeInput  = document.getElementById('badge');
-    const statusBox   = document.getElementById('status');
-    const statusMsg   = statusBox.querySelector('.msg');
-    const statusSub   = document.getElementById('sub');
-    const tokensEl    = document.getElementById('tokens');
-    const queueHint   = document.getElementById('queue-hint');
-    const badgeView   = document.getElementById('badge-view');
-    const progress    = document.getElementById('progress');
-    const cooldownLbl = document.getElementById('cooldown-label');
-
-    let cooling = false;
-    let lastBadge = '';
-    let lastBadgeAt = 0;
-
-    // ---------------- Áudio (Web Audio API — sem arquivos externos) ----------------
-    // Bipe agudo e agradável = sucesso/liberação; buzina grave = erro.
-    let audioCtx = null;
-    let soundOn = true;
-
-    function audioReady() {
-      if (audioCtx) {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        return audioCtx;
-      }
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return null;
-        audioCtx = new Ctx();
-      } catch (e) { audioCtx = null; }
-      return audioCtx;
-    }
-
-    // Toca um tom simples: freq (Hz), atraso (s), duração (s).
-    function tone(freq, startAt, dur, type, peak) {
-      if (!soundOn) return;
-      const ctx = audioReady();
-      if (!ctx) return;
-      const t0 = ctx.currentTime + (startAt || 0);
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type || 'sine';
-      osc.frequency.setValueAtTime(freq, t0);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(peak || 0.25, t0 + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(t0); osc.stop(t0 + dur + 0.03);
-    }
-
-    function beepSuccess() { tone(880, 0, 0.12, 'sine', 0.28); tone(1320, 0.11, 0.16, 'sine', 0.24); }
-    function beepError()   { tone(200, 0, 0.18, 'square', 0.20); tone(150, 0.16, 0.30, 'square', 0.18); }
-
-    // O navegador só libera áudio após um gesto do usuário.
-    let audioPrimed = false;
-    function primeAudio() { if (audioPrimed) return; audioPrimed = true; audioReady(); }
-    ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
-      window.addEventListener(ev, primeAudio, { passive: true }));
-
-    const soundToggle = document.getElementById('sound-toggle');
-    if (soundToggle) {
-      soundToggle.addEventListener('click', () => {
-        soundOn = !soundOn;
-        soundToggle.textContent = soundOn ? '🔊 Som' : '🔇 Mudo';
-        soundToggle.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
-        if (soundOn) beepSuccess();
-      });
-    }
-
-    function setStatus(kind, msg, sub) {
-      statusBox.className = 'status ' + kind;
-      statusMsg.textContent = msg;
-      statusSub.textContent = sub || '';
-    }
-
-    function refreshTokens() {
-      fetch('/api/booth/status', { cache: 'no-store' })
-        .then(r => r.json())
-        .then(d => {
-          tokensEl.textContent = (d.voting_tokens ?? '–');
-          queueHint.textContent = d.poll_open ? (d.available ? 'Há vaga' : 'Sem vaga') : 'Sem plebiscito';
-        })
-        .catch(() => { tokensEl.textContent = '–'; queueHint.textContent = 'offline'; });
-    }
-
-    // Bloqueio do input durante o cooldown (anti duplo-swap).
-    function startCooldown() {
-      cooling = true;
-      badgeInput.disabled = true;
-      badgeInput.value = '';
-      const start = performance.now();
-      function tick(now) {
-        const left = Math.max(0, COOLDOWN_MS - (now - start));
-        progress.style.width = (left / COOLDOWN_MS * 100) + '%';
-        if (left <= 0) {
-          cooling = false;
-          badgeInput.disabled = false;
-          progress.style.width = '0%';
-          badgeInput.focus();
-          return;
-        }
-        requestAnimationFrame(tick);
-      }
-      requestAnimationFrame(tick);
-    }
-
-    async function submitBadge(raw) {
-      const badge = (raw || '').trim();
-      if (!badge) return;
-
-      // Debounce: ignora leituras repetidas do MESMO crachá em curto intervalo.
-      const now = Date.now();
-      if (badge === lastBadge && (now - lastBadgeAt) < COOLDOWN_MS) {
-        setStatus('warn', 'Leitura repetida ignorada', 'Aguarde o cooldown antes da próxima leitura.');
-        return;
-      }
-      lastBadge = badge;
-      lastBadgeAt = now;
-      badgeView.textContent = badge;
-
-      setStatus('info', 'Validando crachá...', '');
-
-      try {
-        const resp = await fetch('/api/checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ badge_id: badge })
-        });
-        const data = await resp.json().catch(() => ({}));
-
-        if (resp.ok && data.ok) {
-          beepSuccess();
-          setStatus('ok', 'Liberado para votar ✅',
-                    data.instruction || 'Dirija-se a uma cabine de votação.');
-        } else if (data.status === 'already_voted') {
-          beepError();
-          setStatus('warn', 'Crachá já votou', 'Este crachá já realizou o check-in.');
-        } else if (data.status === 'no_poll') {
-          beepError();
-          setStatus('err', 'Nenhum plebiscito aberto', 'Aguarde o administrador iniciar a votação.');
-        } else if (resp.status === 401) {
-          beepError();
-          setStatus('err', 'Acesso negado', 'Falha de autenticação do dispositivo.');
-        } else {
-          beepError();
-          setStatus('err', 'Falha no check-in', data.detail || data.error || 'Erro inesperado.');
-        }
-      } catch (err) {
-        beepError();
-        setStatus('err', 'Servidor indisponível', 'Verifique a rede/roteador e tente novamente.');
-      } finally {
-        refreshTokens();
-        startCooldown();
-      }
-    }
-
-    // O leitor HID "digita" o crachá e envia Enter -> aqui tratamos.
-    badgeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (cooling) return;
-        submitBadge(badgeInput.value);
-      }
-    });
-
-    // Mantém o foco no campo (essencial para o leitor HID).
-    setInterval(() => {
-      if (!cooling && document.activeElement !== badgeInput) badgeInput.focus();
-    }, 800);
-
-    cooldownLbl.textContent = {{ cooldown }};
-    window.addEventListener('load', () => { badgeInput.focus(); refreshTokens(); });
-    setInterval(refreshTokens, 3000);
+    // Configuração vinda do servidor (Jinja).
+    window.VOTACAO_COOLDOWN = {{ cooldown }};
   </script>
+  <script src="{{ url_for('static', filename='js/checkin.js') }}"></script>
 </body>
 </html>

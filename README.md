@@ -17,7 +17,7 @@ onde está conectado o **leitor NFC USB** (emulador de teclado/HID). Cabines
 | `/painel-tv`  | Painel público de resultados (TV) com gráfico de barras.              |
 | `/admin`      | Painel administrativo — cria/reseta/encerra plebiscitos dinâmicos.    |
 | `/admin/relatorio` | **Ata de Fechamento / Relatório Oficial** em A4 (imprimir/Salvar PDF). |
-| `/`           | Índice com links para todas as telas.                                 |
+| `/`           | Hub / Início — índice com links para todas as telas e status em tempo real. |
 
 ## 2. Instalação
 
@@ -292,7 +292,12 @@ Assim, depois de uma queda de energia, a cabine volta sozinha à tela de voto.
 bash test_e2e.sh       # fluxo funcional (67 cenários)
 bash test_db_path.sh   # resolução/fallback do caminho do SQLite (10 cenários)
 bash test_persist.sh   # persistência após reboot + atomicidade (24 cenários)
+bash test_history.sh   # histórico de plebiscitos + purga do banco (23 cenários)
 ```
+
+Os quatro scripts sobem o servidor em uma **porta isolada** e usam um banco
+temporário, então podem ser executados sem afetar o banco de produção. No
+momento, **124 verificações** passam (67 + 10 + 24 + 23).
 
 - `test_e2e.sh` — fluxo funcional em porta isolada: autenticação por token,
   check-in, bloqueio de voto duplo, consumo de tokens, atraso dos resultados,
@@ -311,6 +316,12 @@ bash test_persist.sh   # persistência após reboot + atomicidade (24 cenários)
   provar que o decremento da fila é atômico (nunca se consome mais que o
   disponível). Também confirma que a **numeração das cabines** sobrevive ao
   reinício.
+- `test_history.sh` — **histórico de plebiscitos** (`/api/admin/history`: exige
+  token, lista do mais recente ao mais antigo, marca o plebiscito ativo e agrega
+  votos/votantes/percentuais por opção) e a **purga controlada do banco**
+  (`DELETE /api/admin/db/purge`: exige `confirm=1` e um `scope` válido; o escopo
+  `logs` zera votos preservando os plebiscitos, e o escopo `all` zera tudo e
+  reinicia a numeração dos plebiscitos).
 
 ## 9. Estrutura
 
@@ -319,13 +330,33 @@ app.py               # Backend Flask (rotas + SQLite + token de dispositivo)
                      #   - servidor de produção Waitress (padrão); --dev = Flask
 requirements.txt     # Flask + Waitress
 templates/
-  index.html         # Indice
+  index.html         # Hub / Início (indice com links e status das telas)
   admin.html         # Painel administrativo (X-Device-Token)
   relatorio.html     # Ata de Fechamento / Relatorio Oficial (A4, impressao/PDF)
   checkin.html       # Check-in (leitor NFC HID + cooldown)
   cabine.html        # Cabine touch (kiosk)
   painel_tv.html     # Painel de resultados (Chart.js / fallback CSS)
+static/
+  css/theme.css      # Tema global (variaveis de cor, claro/escuro)
+  css/index.css      # Estilos do Hub / Início
+  css/admin.css      # Estilos do painel administrativo
+  css/checkin.css    # Estilos do check-in
+  css/cabine.css     # Estilos da cabine
+  css/painel_tv.css  # Estilos do painel de TV
+  css/relatorio.css  # Estilos da Ata (A4, otimizado para impressao/PDF)
+  js/theme.js        # Tema global (data-theme + localStorage) - carregado no <head>
+  js/index.js        # Hub / Início (clock, status das telas)
+  js/admin.js        # Painel administrativo (X-Device-Token em sessionStorage)
+  js/checkin.js      # Check-in (NFC HID + cooldown + bipes Web Audio)
+  js/cabine.js       # Cabine (registro, heartbeat, pareamento por PIN, voto)
+  js/painel_tv.js    # Painel de TV (polling + Chart.js/fallback CSS)
 test_e2e.sh          # Testes end-to-end (fluxo funcional)
 test_db_path.sh      # Testes de caminho/fallback do banco SQLite
 test_persist.sh      # Testes de persistencia (reboot) + atomicidade da fila
+test_history.sh      # Testes de historico de plebiscitos + purga do banco
 ```
+
+> Todo o **CSS e o JavaScript ficam em `static/`** (nenhum bloco `<style>` ou
+> `<script>` inline nos templates, exceto um pequeno bloco de configuração que
+> injeta valores do servidor — ex.: `window.VOTACAO_COOLDOWN`). O tema
+> claro/escuro é compartilhado por `static/js/theme.js` + `static/css/theme.css`.

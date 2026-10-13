@@ -101,21 +101,25 @@ resp=$(admin "$BASE/api/admin/state")
 echo "$resp" | grep -q '"question":"Pergunta persistente?"'; check "pergunta persistiu" "0" "$?"
 echo "$resp" | grep -q '"label":"Talvez"';                   check "opcoes persistiram" "0" "$?"
 echo "$resp" | grep -q '"status":"open"';                    check "poll continua aberta" "0" "$?"
-echo "$resp" | grep -q '"voting_tokens":1';                  check "FILA de tokens persistiu (1)" "0" "$?"
+echo "$resp" | grep -q '"voting_tokens":0';                  check "FILA de tokens resetada no boot (0)" "0" "$?"
 echo "$resp" | grep -q '"voters_checked_in":2';              check "crachas persistiram (2)" "0" "$?"
 echo "$resp" | grep -q '"total_votes":1';                    check "votos persistiram (1)" "0" "$?"
 
+# A fila de tokens e VOLATIL (resetada a cada boot): sem tokens pendentes,
+# nao ha vaga. O plebiscito em si continua persistido (poll_id abaixo).
 resp=$(curl -s "$BASE/api/booth/status")
-echo "$resp" | grep -q '"available":true';            check "cabine ainda ve vaga" "0" "$?"
+echo "$resp" | grep -q '"available":false';            check "sem vaga apos reset da fila" "0" "$?"
 echo "$resp" | grep -q "\"poll_id\":$POLL_ID";         check "poll_id preservado" "0" "$?"
 
 resp=$(curl -s "$BASE/api/booths")
 echo "$resp" | grep -q '"label":"Cabine 01"';          check "numeracao da cabine persistiu apos reboot" "0" "$?"
 
-# O token remanescente continua utilizavel apos o restart.
+# A fila de tokens e VOLATIL: apos o reboot nao ha token pendente a consumir.
+# (Os dados persistentes - plebiscito, crachas e votos - seguem intactos.)
 resp=$(curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_2"}')
-echo "$resp" | grep -q '"status":"recorded"';  check "voto aceito apos restart" "0" "$?"
-echo "$resp" | grep -q '"voting_tokens":0';    check "token remanescente consumido" "0" "$?"
+echo "$resp" | grep -q '"status":"no_token"';  check "sem token pendente apos restart" "0" "$?"
+resp=$(curl -s "$BASE/api/booth/status")
+echo "$resp" | grep -q '"voting_tokens":0';    check "fila permanece zerada" "0" "$?"
 
 # -------------------------------------------------------------------------- #
 echo "== Fase 3: status 'closed' persiste apos reinicio =="
