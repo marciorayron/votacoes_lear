@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import secrets
 import sqlite3
@@ -54,6 +55,7 @@ import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from logging.handlers import RotatingFileHandler
 from typing import Any, Optional
 
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
@@ -102,6 +104,63 @@ _DB_LOCK = threading.RLock()
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+
+# Habilitar no modo DEV para expor o traceback tambem na resposta (uso local).
+if os.environ.get("FLASK_DEBUG") not in (None, "", "0", "false", "False"):
+    app.config["PROPAGATE_EXCEPTIONS"] = True
+
+
+# --------------------------------------------------------------------------- #
+# Logging (console + arquivo rotativo)
+# --------------------------------------------------------------------------- #
+# Todos os eventos relevantes (boot, autenticacao admin, ciclo de vida dos
+# plebiscitos, cabines e erros internos) passam por este logger. A saida vai
+# para o terminal (stdout) e para um arquivo rotativo ``app.log`` na raiz do
+# projeto, para diagnostico posterior.
+LOG_PATH = os.environ.get("APP_LOG", os.path.join(BASE_DIR, "app.log"))
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+LOG_MAX_BYTES = int(os.environ.get("APP_LOG_MAX_BYTES", str(1_000_000)))
+LOG_BACKUP_COUNT = int(os.environ.get("APP_LOG_BACKUP_COUNT", "3"))
+
+
+def _configure_logging() -> logging.Logger:
+    """Configura o logger da aplicacao (idempotente).
+
+    Anexa um handler de console (stdout, com timestamp e nivel) e um handler
+    de arquivo rotativo (``app.log``). Se o arquivo nao puder ser aberto (ex.:
+    diretorio somente-leitura), a aplicacao segue apenas com o console, sem
+    abortar o boot.
+    """
+    log = logging.getLogger("votacao")
+    log.setLevel(logging.INFO)
+    log.propagate = False  # evita duplicar no root logger do Flask/Waitress
+    if log.handlers:       # ja configurado (ex.: reimport do modulo)
+        return log
+
+    formatter = logging.Formatter(LOG_FORMAT, LOG_DATEFMT)
+
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    console.setFormatter(formatter)
+    log.addHandler(console)
+
+    try:
+        file_handler = RotatingFileHandler(
+            LOG_PATH, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        log.addHandler(file_handler)
+    except OSError as exc:
+        log.warning("Nao foi possivel abrir o arquivo de log '%s': %s",
+                    LOG_PATH, exc)
+
+    return log
+
+
+logger = _configure_logging()
 
 
 # --------------------------------------------------------------------------- #
@@ -815,6 +874,10 @@ def require_device_token(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _token_valid(_extract_token()):
+            logger.warning(
+                "Falha de autenticacao admin (401) em %s %s - IP %s",
+                request.method, request.path, _client_ip() or "desconhecido",
+            )
             return (
                 jsonify({"ok": False, "error": "unauthorized",
                          "detail": "Header X-Device-Token ausente ou invalido."}),
@@ -994,6 +1057,11 @@ def api_booth_status():
                     booth = touch_booth(db, booth_id, "voting",
                                         client_ip=_client_ip())
                     assigned = bool(booth and booth["assigned"])
+                    if assigned:
+                        logger.info(
+                            "Cabine %s assumiu/recebeu um token de votacao.",
+                            booth_id,
+                        )
 
             payload["booth"] = booth
             payload["assigned"] = assigned
@@ -1008,6 +1076,11 @@ def api_booth_status():
                         for o in poll["options"]
                     ],
                 }
+    logger.debug(
+        "Status da cabine %s: tokens=%s, assigned=%s, online=%s",
+        booth_id or "-", payload.get("voting_tokens"),
+        payload.get("assigned"), payload.get("booths_online"),
+    )
     return jsonify(payload)
 
 
@@ -1065,6 +1138,12 @@ def api_booth_register():
 
     if booth is None:
         return _user_error("invalid_booth_id", 400)
+    logger.info(
+        "Cabine registrada: %s (%s) via IP %s%s",
+        booth.get("label"), booth_id, client_ip or "desconhecido",
+        " - novo token de pareamento emitido"
+        if booth.get("pairing_token") else "",
+    )
     return jsonify({"ok": True, "booth": booth})
 
 
@@ -1086,6 +1165,10 @@ def api_booth_heartbeat():
     if booth is None:
         return jsonify({"ok": False, "status": "unknown_booth",
                         "detail": "Cabine nao registrada."}), 404
+    logger.info(
+        "Heartbeat da cabine %s (status=%s, IP=%s)",
+        booth_id, status or "n/a", _client_ip() or "desconhecido",
+    )
     return jsonify({"ok": True, "booth": booth})
 
 
@@ -1424,6 +1507,10 @@ def api_admin_start_poll():
         set_voting_tokens(db, 0)
         db.commit()
         state = _admin_state(db)
+        logger.info(
+            "Plebiscito #%s criado (encerra #%s): %r",
+            new_id, previous_id if previous_id is not None else "-", question,
+        )
 
     state["detail"] = "Plebiscito iniciado."
     return jsonify(state), 201
@@ -1453,6 +1540,10 @@ def api_admin_reset():
         set_voting_tokens(db, 0)
         db.commit()
         state = _admin_state(db)
+        logger.info(
+            "Contadores do plebiscito #%s zerados (clear_voters=%s).",
+            poll_id, clear,
+        )
 
     state["detail"] = "Contadores zerados."
     return jsonify(state)
@@ -1478,6 +1569,7 @@ def api_admin_close():
         set_voting_tokens(db, 0)
         db.commit()
         state = _admin_state(db)
+        logger.info("Plebiscito #%s encerrado.", poll_id)
 
     state["detail"] = "Plebiscito encerrado."
     return jsonify(state)
@@ -1510,6 +1602,7 @@ def api_admin_tokens():
 
         db.commit()
         state = _admin_state(db)
+        logger.info("Fila de tokens de votacao ajustada para %s.", tokens)
     state["detail"] = f"Fila de tokens ajustada para {tokens}."
     return jsonify(state)
 
@@ -1542,6 +1635,7 @@ def api_admin_pairing():
             detail = "PIN de pareamento atualizado." if pin else \
                 "Pareamento de cabines desativado."
         state = _admin_state(db)
+        logger.info("Pareamento de cabines: %s", detail)
     state["detail"] = detail
     return jsonify(state)
 
@@ -1557,6 +1651,7 @@ def api_admin_remove_booth(booth_id: str):
         if cur.rowcount == 0:
             return _user_error("unknown_booth", 404)
         state = _admin_state(db)
+        logger.info("Cabine removida (deregistro): %s", booth_id)
     state["detail"] = "Cabine removida. O dispositivo precisara parear novamente."
     return jsonify(state)
 
@@ -1641,6 +1736,12 @@ def api_admin_db_purge():
         state = _admin_state(db)
         history = history_payload(db)
 
+    logger.info(
+        "Banco de dados purgado (scope=%s): %s voto(s), %s check-in(s), "
+        "%s plebiscito(s) removido(s).",
+        scope, removed_votes, removed_voters,
+        removed_polls if scope == "all" else 0,
+    )
     return jsonify({
         "ok": True,
         "scope": scope,
@@ -1687,6 +1788,10 @@ def admin_report_page():
     """
     provided = _extract_token()
     if not _token_valid(provided):
+        logger.warning(
+            "Falha de autenticacao admin (401) na Ata de fechamento - IP %s",
+            _client_ip() or "desconhecido",
+        )
         return (
             "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
             "<title>Acesso negado</title></head><body "
@@ -1718,7 +1823,13 @@ def _method_not_allowed(_e):
 
 
 @app.errorhandler(500)
-def _internal_error(_e):
+def _internal_error(e):
+    original = getattr(e, "original_exception", None) or e
+    logger.error(
+        "Erro interno do servidor (500) em %s %s - IP %s: %s",
+        request.method, request.path, _client_ip() or "desconhecido", original,
+        exc_info=original,
+    )
     return jsonify({"ok": False, "error": "internal_error"}), 500
 
 
@@ -1750,6 +1861,18 @@ def _banner(mode: str = "Production (Waitress)") -> None:
     # Garante que o log de inicializacao apareca imediatamente, mesmo com a
     # saida redirecionada para pipe/arquivo (o servidor WSGI nao faz flush).
     sys.stdout.flush()
+
+    # Registro estruturado do boot (vai tambem para app.log).
+    logger.info("Servidor iniciado (%s) - bind %s:%s", mode, HOST, PORT)
+    logger.info(
+        "DEVICE_TOKEN ativo: %s%s", DEVICE_TOKEN,
+        " (gerado automaticamente - defina DEVICE_TOKEN para fixar)"
+        if _TOKEN_WAS_GENERATED else "",
+    )
+    logger.info("Banco de dados em uso: %s", DB_PATH)
+    if os.path.abspath(DB_PATH) != os.path.abspath(REQUESTED_DB_PATH):
+        logger.warning("Fallback de banco em uso - VOTING_DB pedido: %s",
+                       REQUESTED_DB_PATH)
 
 
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

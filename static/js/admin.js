@@ -34,9 +34,23 @@ async function api(path, method = 'GET', body = null) {
   }
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error('unauthorized');
+  if (res.status === 401) { handleUnauthorized(); throw new Error('unauthorized'); }
   if (!res.ok && !data.error) throw new Error('http_' + res.status);
   return { ok: res.ok, status: res.status, data };
+}
+
+// Sessao expirada / token invalido: bloqueia o painel e reabre o modal Unlock.
+const SESSION_EXPIRED_MSG =
+  'Sessão expirada ou token inválido. Informe o novo Device Token exibido no terminal.';
+
+function handleUnauthorized() {
+  const atUnlock = unlockSection && !unlockSection.classList.contains('hidden');
+  if (atUnlock) {
+    if (unlockHint) unlockHint.textContent = SESSION_EXPIRED_MSG;
+  } else {
+    lock(SESSION_EXPIRED_MSG);
+  }
+  toast(SESSION_EXPIRED_MSG, 'err');
 }
 
 function escapeHtml(s) {
@@ -76,8 +90,8 @@ async function generatePairingPin() {
     renderState(data);
     toast('PIN de pareamento: ' + (data.pairing_pin || '–'), 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Falha ao gerar o PIN.', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao gerar o PIN.', 'err');
   }
 }
 
@@ -98,8 +112,8 @@ async function setPairingPin() {
     input.value = '';
     toast('PIN de pareamento definido.', 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Falha ao definir o PIN.', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao definir o PIN.', 'err');
   }
 }
 
@@ -109,8 +123,8 @@ async function clearPairingPin() {
     renderState(data);
     toast('Pareamento desativado.', 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Falha ao desativar o pareamento.', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao desativar o pareamento.', 'err');
   }
 }
 
@@ -132,7 +146,7 @@ async function refreshState(showError) {
     renderState(data);
     document.getElementById('clock').textContent = 'Servidor: ' + (data.server_time || '–');
   } catch (err) {
-    if (err.message === 'unauthorized') { lock('Token inválido ou expirado.'); return; }
+    if (err.message === 'unauthorized') return;
     if (showError) toast('Falha ao consultar o servidor.', 'err');
   }
 }
@@ -220,7 +234,7 @@ async function loadHistory(showError) {
     renderHistory(data);
     historyLoaded = true;
   } catch (err) {
-    if (err.message === 'unauthorized') { lock('Token inválido ou expirado.'); return; }
+    if (err.message === 'unauthorized') return;
     if (showError) toast('Falha ao carregar o histórico.', 'err');
   }
 }
@@ -282,8 +296,8 @@ async function purgeDatabase() {
           ' check-in(s), ' + (r.polls || 0) + ' plebiscito(s).', 'ok');
     document.getElementById('purge-confirm').value = '';
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Falha ao purgar o banco.', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao purgar o banco.', 'err');
   } finally {
     btn.disabled = false;
   }
@@ -303,8 +317,8 @@ async function startPoll() {
     renderState(data);
     toast('Plebiscito iniciado.', 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Erro ao iniciar o plebiscito.', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Erro ao iniciar o plebiscito.', 'err');
   } finally {
     btn.disabled = false;
   }
@@ -317,8 +331,8 @@ async function resetPoll() {
     renderState(data);
     toast('Contadores zerados.', 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Nada a zerar (sem plebiscito ativo?)', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Nada a zerar (sem plebiscito ativo?)', 'err');
   }
 }
 
@@ -329,8 +343,8 @@ async function closePoll() {
     renderState(data);
     toast('Votação encerrada.', 'ok');
   } catch (err) {
-    if (err.message === 'unauthorized') lock('Sessão expirada.');
-    else toast('Nada a encerrar (sem plebiscito ativo?)', 'err');
+    if (err.message === 'unauthorized') return;
+    toast('Nada a encerrar (sem plebiscito ativo?)', 'err');
   }
 }
 

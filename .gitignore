@@ -14,6 +14,10 @@ voting.db-shm
 .venv/
 venv/
 
+# Logs da aplicacao (console + arquivo rotativo)
+app.log
+app.log.*
+
 # Arquivos de editor / SO
 .vscode/
 .idea/
