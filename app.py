@@ -27,6 +27,14 @@ Configuracao (variaveis de ambiente)
   RESULTS_DELAY_SECONDS ..... atraso controlado para liberar resultados (def. 5)
   HOST / PORT ............... bind do servidor (default 0.0.0.0:5000)
 
+Pareamento de cabines (opcional)
+--------------------------------
+  O administrador pode gerar/definir um PIN temporario em /admin (guardado na
+  tabela settings, chave 'booth_pairing_pin'). Enquanto houver PIN ativo, uma
+  cabine NOVA so se registra informando o PIN; aprovado o pareamento, o token
+  e guardado no localStorage do navegador da cabine. Sem PIN configurado o
+  registro permanece aberto (compatibilidade).
+
 Execucao
 --------
   Por padrao sobe em modo PRODUCAO com o servidor WSGI Waitress (sem o aviso
@@ -309,6 +317,8 @@ def init_db() -> None:
                 status        TEXT NOT NULL DEFAULT 'idle',  -- idle | voting
                 last_seen     TEXT NOT NULL,            -- ultimo heartbeat (ISO/UTC)
                 busy_until    TEXT,                     -- reserva ate (ISO/UTC) ou NULL
+                client_ip     TEXT,                     -- ultimo IP observado (registro/heartbeat)
+                pairing_token TEXT,                     -- token de pareamento (prova de emparelhamento)
                 registered_at TEXT NOT NULL
             );
 
@@ -316,6 +326,8 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_booths_number ON booths(number);
             """
         )
+        # Migra bancos ja existentes (adiciona colunas novas de forma idempotente).
+        _migrate_schema(conn)
         # Valores iniciais dos contadores globais.
         conn.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('voting_tokens', '0')"
@@ -329,6 +341,19 @@ def init_db() -> None:
         raise
     finally:
         conn.close()
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Adiciona colunas novas a bancos ja existentes (idempotente).
+
+    Necessario porque ``CREATE TABLE IF NOT EXISTS`` nao altera tabelas
+    preexistentes: sem isto, um ``votacao.db`` antigo ficaria sem as colunas
+    de IP/pareamento e as consultas falhariam.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(booths)")}
+    for column in ("client_ip", "pairing_token"):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE booths ADD COLUMN {column} TEXT")
 
 
 # --------------------------------------------------------------------------- #
@@ -350,6 +375,62 @@ def set_setting(db: sqlite3.Connection, key: str, value: Any) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, str(value)),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Pareamento de cabines (Pairing PIN)
+# --------------------------------------------------------------------------- #
+PAIRING_PIN_SETTING = "booth_pairing_pin"
+
+
+def get_pairing_pin(db: sqlite3.Connection) -> str:
+    """PIN atual de pareamento (string vazia = pareamento desativado)."""
+    return get_setting(db, PAIRING_PIN_SETTING, "").strip()
+
+
+def generate_pairing_pin() -> str:
+    """Gera um PIN numerico temporario de 6 digitos."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def set_pairing_pin(db: sqlite3.Connection, pin: Any) -> str:
+    """Define (ou limpa, com string vazia) o PIN de pareamento.
+
+    Levanta ``ValueError`` se o PIN nao for alfanumerico ou tiver tamanho
+    fora de 4..16 caracteres (quando nao vazio).
+    """
+    pin = str(pin or "").strip()
+    if pin == "":
+        set_setting(db, PAIRING_PIN_SETTING, "")
+        db.commit()
+        return ""
+    if len(pin) < 4 or len(pin) > 16:
+        raise ValueError("pin_length")
+    if not pin.isalnum():
+        raise ValueError("pin_alphanumeric")
+    set_setting(db, PAIRING_PIN_SETTING, pin)
+    db.commit()
+    return pin
+
+
+def _pin_matches(provided: str, required: str) -> bool:
+    """Compara o PIN informado com o configurado (tempo constante)."""
+    if not provided or not required:
+        return False
+    try:
+        return secrets.compare_digest(str(provided), str(required))
+    except (TypeError, ValueError):
+        return False
+
+
+def _token_equal(a: str, b: str) -> bool:
+    """Compara dois tokens em tempo constante."""
+    if not a or not b:
+        return False
+    try:
+        return secrets.compare_digest(str(a), str(b))
+    except (TypeError, ValueError):
+        return False
 
 
 def get_voting_tokens(db: sqlite3.Connection) -> int:
@@ -553,6 +634,8 @@ def _row_to_booth(row: sqlite3.Row) -> dict:
         "assigned": online and busy,
         "last_seen": row["last_seen"],
         "busy_until": row["busy_until"],
+        "client_ip": row["client_ip"],
+        "paired": bool(row["pairing_token"]),
     }
 
 
@@ -568,59 +651,92 @@ def list_booths(db: sqlite3.Connection) -> list[dict]:
     return [_row_to_booth(r) for r in rows]
 
 
-def register_booth(db: sqlite3.Connection, booth_id: str) -> Optional[dict]:
-    """Registra (idempotente) uma cabine e atribui um numero amigavel estavel."""
+def register_booth(
+    db: sqlite3.Connection,
+    booth_id: str,
+    client_ip: str = "",
+    rotate: bool = False,
+) -> Optional[dict]:
+    """Registra (idempotente) uma cabine e atribui um numero amigavel estavel.
+
+    Em cabines NOVAS (ou quando ``rotate=True``) gera e persiste um
+    ``pairing_token`` devolvido em ``booth["pairing_token"]``: o navegador o
+    guarda em localStorage como prova de pareamento. O ``client_ip`` observado
+    e sempre atualizado quando informado.
+    """
     booth_id = booth_id.strip()
     if not booth_id or len(booth_id) > 128:
         return None
     row = db.execute(
         "SELECT * FROM booths WHERE booth_id = ?", (booth_id,)
     ).fetchone()
+    token: Optional[str] = None
     if row is None:
         number = db.execute(
             "SELECT COALESCE(MAX(number), 0) + 1 AS n FROM booths"
         ).fetchone()["n"]
+        token = secrets.token_urlsafe(24)
         db.execute(
-            "INSERT INTO booths(booth_id, number, label, status, last_seen, registered_at) "
-            "VALUES(?, ?, ?, 'idle', ?, ?)",
-            (booth_id, number, _booth_label(number), now_iso(), now_iso()),
+            "INSERT INTO booths(booth_id, number, label, status, last_seen, "
+            "client_ip, pairing_token, registered_at) "
+            "VALUES(?, ?, ?, 'idle', ?, ?, ?, ?)",
+            (booth_id, number, _booth_label(number), now_iso(),
+             client_ip or None, token, now_iso()),
+        )
+    elif rotate:
+        token = secrets.token_urlsafe(24)
+        db.execute(
+            "UPDATE booths SET last_seen = ?, client_ip = COALESCE(?, client_ip), "
+            "pairing_token = ? WHERE booth_id = ?",
+            (now_iso(), client_ip or None, token, booth_id),
         )
     else:
         db.execute(
-            "UPDATE booths SET last_seen = ? WHERE booth_id = ?",
-            (now_iso(), booth_id),
+            "UPDATE booths SET last_seen = ?, client_ip = COALESCE(?, client_ip) "
+            "WHERE booth_id = ?",
+            (now_iso(), client_ip or None, booth_id),
         )
     db.commit()
-    return get_booth(db, booth_id)
+    booth = get_booth(db, booth_id)
+    if booth is not None and token is not None:
+        # So devolve o token quando (re)emitido, e nunca em respostas publicas.
+        booth["pairing_token"] = token
+    return booth
 
 
 def touch_booth(
-    db: sqlite3.Connection, booth_id: str, status: Optional[str] = None
+    db: sqlite3.Connection,
+    booth_id: str,
+    status: Optional[str] = None,
+    client_ip: str = "",
 ) -> Optional[dict]:
     """Atualiza o heartbeat da cabine.
 
     status='idle'   -> libera a reserva (volta a ficar disponivel).
     status='voting' -> mantem/renova a reserva (cabine em uso).
+    O ``client_ip``, quando informado, e gravado como ultimo IP observado.
     """
     booth_id = booth_id.strip()
     if not booth_id:
         return None
+    ip = client_ip or None
     if status == "idle":
         db.execute(
-            "UPDATE booths SET last_seen = ?, status = 'idle', busy_until = NULL "
-            "WHERE booth_id = ?",
-            (now_iso(), booth_id),
+            "UPDATE booths SET last_seen = ?, client_ip = COALESCE(?, client_ip), "
+            "status = 'idle', busy_until = NULL WHERE booth_id = ?",
+            (now_iso(), ip, booth_id),
         )
     elif status == "voting":
         db.execute(
-            "UPDATE booths SET last_seen = ?, status = 'voting', busy_until = ? "
-            "WHERE booth_id = ?",
-            (now_iso(), _iso_future(BOOTH_BUSY_SECONDS), booth_id),
+            "UPDATE booths SET last_seen = ?, client_ip = COALESCE(?, client_ip), "
+            "status = 'voting', busy_until = ? WHERE booth_id = ?",
+            (now_iso(), ip, _iso_future(BOOTH_BUSY_SECONDS), booth_id),
         )
     else:
         db.execute(
-            "UPDATE booths SET last_seen = ? WHERE booth_id = ?",
-            (now_iso(), booth_id),
+            "UPDATE booths SET last_seen = ?, client_ip = COALESCE(?, client_ip) "
+            "WHERE booth_id = ?",
+            (now_iso(), ip, booth_id),
         )
     db.commit()
     return get_booth(db, booth_id)
@@ -648,6 +764,20 @@ def allocate_booth(db: sqlite3.Connection) -> Optional[dict]:
         (_iso_future(BOOTH_BUSY_SECONDS), now, row["booth_id"]),
     )
     return {"id": row["booth_id"], "number": row["number"], "label": row["label"]}
+
+
+def _client_ip() -> str:
+    """IP do cliente que originou a requisicao.
+
+    Prioriza o primeiro endereco de ``X-Forwarded-For`` (quando o servidor esta
+    atras de um proxy/roteador) e recai para ``request.remote_addr``.
+    """
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return request.remote_addr or ""
 
 
 # --------------------------------------------------------------------------- #
@@ -836,14 +966,56 @@ def api_booth_status():
 
 @app.post("/api/booth/register")
 def api_booth_register():
-    """Registra uma cabine/kiosk e devolve seu numero amigavel ("Cabine 01")."""
+    """Registra uma cabine/kiosk e devolve seu numero amigavel ("Cabine 01").
+
+    Body: {"booth_id": "...",
+           "pairing_token": "..."?,   # prova de pareamento (localStorage)
+           "pairing_pin": "..."?}     # PIN para parear uma cabine nova
+
+    Regras de pareamento:
+      * Sem PIN configurado -> registro aberto (modo legado).
+      * Com PIN configurado -> uma cabine NOVA exige ``pairing_pin`` correto;
+        uma cabine ja conhecida e aceita apresentando seu ``pairing_token``
+        (ou o PIN atual, que rotaciona o token).
+    """
     data = request.get_json(silent=True) or {}
     booth_id = str(data.get("booth_id", "")).strip()
     if not booth_id:
         return _user_error("booth_id_required", 400)
+    provided_pin = str(data.get("pairing_pin", "")).strip()
+    provided_token = str(data.get("pairing_token", "")).strip()
+    client_ip = _client_ip()
+
     with _DB_LOCK:
         db = get_db()
-        booth = register_booth(db, booth_id)
+        required_pin = get_pairing_pin(db)
+        existing = db.execute(
+            "SELECT * FROM booths WHERE booth_id = ?", (booth_id,)
+        ).fetchone()
+
+        rotate = False
+        if existing is None:
+            # Cabine nova: exige o PIN quando o pareamento esta ativo.
+            if required_pin and not _pin_matches(provided_pin, required_pin):
+                return _user_error(
+                    "pairing_required", 403,
+                    detail="Informe o PIN de pareamento exibido no painel administrativo.",
+                )
+        else:
+            stored = existing["pairing_token"]
+            if stored and provided_token and _token_equal(provided_token, stored):
+                pass  # token valido -> segue
+            elif required_pin and _pin_matches(provided_pin, required_pin):
+                rotate = True  # re-pareamento autorizado pelo PIN -> novo token
+            elif not stored:
+                pass  # registro legado (sem token) -> segue
+            else:
+                return _user_error(
+                    "pairing_required", 403,
+                    detail="Cabine ja pareada. Remova-a no painel para parear novamente.",
+                )
+        booth = register_booth(db, booth_id, client_ip, rotate=rotate)
+
     if booth is None:
         return _user_error("invalid_booth_id", 400)
     return jsonify({"ok": True, "booth": booth})
@@ -854,6 +1026,7 @@ def api_booth_heartbeat():
     """Heartbeat da cabine: mantem 'online' e (opcional) libera/renova a reserva.
 
     Body: {"booth_id": "...", "status": "idle"|"voting"}  (status opcional)
+    Registra tambem o IP de origem (ultimo observado).
     """
     data = request.get_json(silent=True) or {}
     booth_id = str(data.get("booth_id", "")).strip()
@@ -862,7 +1035,7 @@ def api_booth_heartbeat():
         return _user_error("booth_id_required", 400)
     with _DB_LOCK:
         db = get_db()
-        booth = touch_booth(db, booth_id, status)
+        booth = touch_booth(db, booth_id, status, client_ip=_client_ip())
     if booth is None:
         return jsonify({"ok": False, "status": "unknown_booth",
                         "detail": "Cabine nao registrada."}), 404
@@ -1074,12 +1247,15 @@ def _admin_state(db: sqlite3.Connection) -> dict:
             "total_votes": sum(o["count"] for o in options),
         }
 
+    pairing_pin = get_pairing_pin(db)
     return {
         "ok": True,
         "poll": poll_payload,
         "voting_tokens": get_voting_tokens(db),
         "voters_checked_in": voters,
         "booths": list_booths(db),
+        "pairing_pin": pairing_pin,
+        "pairing_enabled": bool(pairing_pin),
         "cooldown": CHECKIN_COOLDOWN_SECONDS,
         "results_delay": RESULTS_DELAY_SECONDS,
         "server_time": now_iso(),
@@ -1235,6 +1411,53 @@ def api_admin_tokens():
     return jsonify(state)
 
 
+@app.post("/api/admin/pairing")
+@require_device_token
+def api_admin_pairing():
+    """Gera, define ou desativa o PIN de pareamento de novas cabines.
+
+    Body (opcional):
+        {"generate": true}    -> gera um novo PIN numerico de 6 digitos;
+        {"pin": "A1B2C3"}     -> define um PIN alfanumerico (4..16 chars);
+        {"clear": true}       -> desativa o pareamento (PIN vazio);
+        {}                    -> equivale a {"generate": true}.
+    """
+    data = request.get_json(silent=True) or {}
+    with _DB_LOCK:
+        db = get_db()
+        if data.get("clear"):
+            pin = set_pairing_pin(db, "")
+            detail = "Pareamento de cabines desativado."
+        elif data.get("generate") or "pin" not in data:
+            pin = set_pairing_pin(db, generate_pairing_pin())
+            detail = f"PIN de pareamento: {pin}"
+        else:
+            try:
+                pin = set_pairing_pin(db, data.get("pin"))
+            except ValueError as exc:
+                return _user_error(str(exc), 400)
+            detail = "PIN de pareamento atualizado." if pin else \
+                "Pareamento de cabines desativado."
+        state = _admin_state(db)
+    state["detail"] = detail
+    return jsonify(state)
+
+
+@app.delete("/api/admin/booths/<path:booth_id>")
+@require_device_token
+def api_admin_remove_booth(booth_id: str):
+    """Remove/desconecta uma cabine registrada (invalidando seu pareamento)."""
+    with _DB_LOCK:
+        db = get_db()
+        cur = db.execute("DELETE FROM booths WHERE booth_id = ?", (booth_id,))
+        db.commit()
+        if cur.rowcount == 0:
+            return _user_error("unknown_booth", 404)
+        state = _admin_state(db)
+    state["detail"] = "Cabine removida. O dispositivo precisara parear novamente."
+    return jsonify(state)
+
+
 # --------------------------------------------------------------------------- #
 # Relatorio oficial / Ata de fechamento (protegido por X-Device-Token)
 # --------------------------------------------------------------------------- #
@@ -1376,8 +1599,16 @@ def _run_production() -> None:
         app.run(host=HOST, port=PORT, threaded=True, debug=False)
         return
     # threads: varias cabines + painel TV consultando ao mesmo tempo.
-    serve(app, host=HOST, port=PORT, threads=8,
-          ident="Sistema de Votacao Local (Waitress)")
+    # clear_untrusted_proxy_headers=False: preserva o X-Forwarded-For para o
+    # monitor de IP das cabines (rede isolada, sem proxy externo hostil).
+    try:
+        serve(app, host=HOST, port=PORT, threads=8,
+              ident="Sistema de Votacao Local (Waitress)",
+              clear_untrusted_proxy_headers=False)
+    except TypeError:
+        # Waitress antigo (sem o parametro) - segue com o comportamento padrao.
+        serve(app, host=HOST, port=PORT, threads=8,
+              ident="Sistema de Votacao Local (Waitress)")
 
 
 if __name__ == "__main__":

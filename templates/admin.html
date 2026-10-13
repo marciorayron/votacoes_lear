@@ -85,6 +85,28 @@
     .bar-item .fill { height:100%; background:linear-gradient(90deg,#38bdf8,#22c55e); width:0;
                       transition:width .35s ease; }
 
+    /* Cabines conectadas */
+    .booth-table { width:100%; border-collapse:collapse; font-size:.92rem; }
+    .booth-table th, .booth-table td { text-align:left; padding:10px 12px;
+                                       border-bottom:1px solid var(--line); }
+    .booth-table th { color:var(--muted); font-size:.76rem; text-transform:uppercase;
+                      letter-spacing:.05em; }
+    .booth-table td:last-child, .booth-table th:last-child { text-align:right; }
+    .booth-table tr:last-child td { border-bottom:none; }
+    .sep { border:none; border-top:1px solid var(--line); margin:24px 0 0; }
+    .pair-row { display:flex; justify-content:space-between; align-items:center;
+                gap:16px; flex-wrap:wrap; margin-bottom:6px; }
+    .pin-badge { display:inline-block; margin-left:8px; padding:4px 12px; border-radius:8px;
+                 background:#0a1526; border:1px solid var(--line); letter-spacing:.18em;
+                 font-size:1.05rem; }
+    .pin-badge.off { color:var(--muted); letter-spacing:normal; font-weight:400; }
+    .st { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+    .st .dot { width:10px; height:10px; border-radius:50%; background:var(--muted);
+               display:inline-block; }
+    .st .dot.ok { background:var(--ok); }
+    .st .dot.warn { background:var(--warn); }
+    .st .dot.err { background:var(--err); }
+
     .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#0f2236;
              border:1px solid var(--line); border-radius:12px; padding:14px 22px; font-weight:600;
              box-shadow:0 12px 30px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:.25s; z-index:50; }
@@ -167,6 +189,42 @@
       </div>
     </div>
 
+    <!-- Cabines conectadas + pareamento -->
+    <div class="card" style="margin-top:22px;">
+      <h3>🖥️ Cabines Conectadas</h3>
+      <table class="booth-table">
+        <thead>
+          <tr>
+            <th>Cabine</th><th>IP do cliente</th><th>Status</th>
+            <th>Último heartbeat</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="booth-rows">
+          <tr><td colspan="5" class="muted">Nenhuma cabine registrada.</td></tr>
+        </tbody>
+      </table>
+
+      <hr class="sep" />
+
+      <h3 style="margin-top:20px;">🔗 Pareamento de cabines</h3>
+      <div class="pair-row">
+        <div><span class="muted">PIN atual:</span><b id="pairing-pin" class="pin-badge off">desativado</b></div>
+        <div class="actions-bar" style="margin:0;">
+          <button class="btn primary small" id="pairing-generate">🎲 Gerar PIN</button>
+          <button class="btn ghost small" id="pairing-copy">⧉ Copiar</button>
+          <button class="btn danger small" id="pairing-clear">✕ Desativar</button>
+        </div>
+      </div>
+      <label class="field" for="pairing-input">Definir um PIN alfanumérico (4–16 caracteres)</label>
+      <div class="option-row">
+        <input type="text" id="pairing-input" placeholder="Ex.: A1B2C3" maxlength="16" autocomplete="off" />
+        <button class="btn ghost" id="pairing-set">Definir</button>
+      </div>
+      <div class="hint">Enquanto houver PIN ativo, uma cabine <b>nova</b> só se
+        registra informando este PIN na tela <b>/cabine</b>. O token aprovado fica
+        guardado no navegador da cabine (localStorage) e dispensa o PIN depois.</div>
+    </div>
+
     <div class="hint" style="margin-top:18px;">
       Rotas públicas: <b>/checkin</b> · <b>/cabine</b> · <b>/painel-tv</b> ·
       Delay de resultados: <b id="cfg-delay">–</b>s · Cooldown check-in: <b id="cfg-cooldown">–</b>s
@@ -240,6 +298,8 @@
     }
     // ------------------ Render do estado ------------------
     function renderState(s) {
+      renderBooths(s.booths || []);
+      renderPairing(s);
       document.getElementById('s-tokens').textContent = s.voting_tokens ?? 0;
       document.getElementById('s-voters').textContent = s.voters_checked_in ?? 0;
       document.getElementById('cfg-delay').textContent = s.results_delay ?? '–';
@@ -285,6 +345,126 @@
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c =>
         ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    // ------------------ Cabines conectadas ------------------
+    function boothStatusInfo(b) {
+      if (!b.online) return { text: 'Offline', cls: 'err' };
+      if (b.status === 'voting' || b.assigned) return { text: 'Votando', cls: 'warn' };
+      return { text: 'Ociosa', cls: 'ok' };
+    }
+
+    function fmtSeen(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleTimeString('pt-BR');
+    }
+
+    function renderBooths(booths) {
+      const body = document.getElementById('booth-rows');
+      if (!booths.length) {
+        body.innerHTML = '<tr><td colspan="5" class="muted">Nenhuma cabine registrada.</td></tr>';
+        return;
+      }
+      const td = html => { const el = document.createElement('td'); el.innerHTML = html; return el; };
+      body.innerHTML = '';
+      booths.forEach(b => {
+        const st = boothStatusInfo(b);
+        const tr = document.createElement('tr');
+        tr.appendChild(td('<b>' + escapeHtml(b.label) + '</b>'));
+        tr.appendChild(td(escapeHtml(b.client_ip || '—')));
+        tr.appendChild(td('<span class="st"><span class="dot ' + st.cls + '"></span>' +
+                          st.text + '</span>'));
+        tr.appendChild(td(escapeHtml(fmtSeen(b.last_seen))));
+        const act = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'btn danger small';
+        btn.textContent = 'Remover';
+        btn.title = 'Remover / desconectar esta cabine';
+        btn.addEventListener('click', () => removeBooth(b.id, b.label));
+        act.appendChild(btn);
+        tr.appendChild(act);
+        body.appendChild(tr);
+      });
+    }
+
+    function renderPairing(s) {
+      const badge = document.getElementById('pairing-pin');
+      const pin = s.pairing_pin || '';
+      badge.textContent = pin || 'desativado';
+      badge.classList.toggle('off', !pin);
+    }
+
+    async function removeBooth(id, label) {
+      if (!confirm('Remover / desconectar ' + label +
+                   '? O dispositivo precisará parear novamente.')) return;
+      try {
+        const { data } = await api('/api/admin/booths/' + encodeURIComponent(id), 'DELETE');
+        renderState(data);
+        toast(label + ' removida.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Não foi possível remover a cabine.', 'err');
+      }
+    }
+
+    // ------------------ Pareamento ------------------
+    async function generatePairingPin() {
+      try {
+        const { data } = await api('/api/admin/pairing', 'POST', { generate: true });
+        renderState(data);
+        toast('PIN de pareamento: ' + (data.pairing_pin || '–'), 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Falha ao gerar o PIN.', 'err');
+      }
+    }
+
+    async function setPairingPin() {
+      const input = document.getElementById('pairing-input');
+      const pin = (input.value || '').trim();
+      if (!pin) { toast('Informe um PIN alfanumérico.', 'err'); return; }
+      try {
+        const { ok, data } = await api('/api/admin/pairing', 'POST', { pin: pin });
+        if (!ok || (data && data.ok === false)) {
+          const code = (data && data.error) || '';
+          if (code === 'pin_length' || code === 'pin_alphanumeric')
+            toast('PIN inválido (4–16 caracteres alfanuméricos).', 'err');
+          else toast('Falha ao definir o PIN.', 'err');
+          return;
+        }
+        renderState(data);
+        input.value = '';
+        toast('PIN de pareamento definido.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Falha ao definir o PIN.', 'err');
+      }
+    }
+
+    async function clearPairingPin() {
+      try {
+        const { data } = await api('/api/admin/pairing', 'POST', { clear: true });
+        renderState(data);
+        toast('Pareamento desativado.', 'ok');
+      } catch (err) {
+        if (err.message === 'unauthorized') lock('Sessão expirada.');
+        else toast('Falha ao desativar o pareamento.', 'err');
+      }
+    }
+
+    function copyPairingPin() {
+      const badge = document.getElementById('pairing-pin');
+      const pin = (badge.textContent || '').trim();
+      if (!pin || badge.classList.contains('off')) { toast('Nenhum PIN ativo.', 'err'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pin)
+          .then(() => toast('PIN copiado.', 'ok'))
+          .catch(() => toast('Não foi possível copiar.', 'err'));
+      } else {
+        toast('Cópia não suportada neste navegador.', 'err');
+      }
     }
 
     async function refreshState(showError) {
@@ -398,6 +578,12 @@
     document.getElementById('reset-btn').addEventListener('click', resetPoll);
     document.getElementById('close-btn').addEventListener('click', closePoll);
     document.getElementById('report-btn').addEventListener('click', openReport);
+    document.getElementById('pairing-generate').addEventListener('click', generatePairingPin);
+    document.getElementById('pairing-copy').addEventListener('click', copyPairingPin);
+    document.getElementById('pairing-clear').addEventListener('click', clearPairingPin);
+    document.getElementById('pairing-set').addEventListener('click', setPairingPin);
+    document.getElementById('pairing-input').addEventListener('keydown',
+      e => { if (e.key === 'Enter') setPairingPin(); });
 
     // ------------------ Init ------------------
     (function init() {

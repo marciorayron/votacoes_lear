@@ -189,6 +189,67 @@ echo "$body" | grep -q 'Aprova a Ata?';          check "pagina relatorio traz a 
 echo "$body" | grep -q 'Ata de Fechamento';      check "pagina rotulada como Ata de Fechamento" "0" "$?"
 echo "$body" | grep -q 'Comissão Eleitoral';     check "pagina traz bloco de assinaturas" "0" "$?"
 
+echo "== 12. Pareamento (PIN), IP do cliente e remocao de cabines =="
+# Estado inicial: pareamento desativado e cabines expondo client_ip.
+resp=$(curl -s -H "X-Device-Token: $TOKEN" "$BASE/api/admin/state")
+echo "$resp" | grep -q '"pairing_enabled":false'; check "pareamento desativado por padrao" "0" "$?"
+echo "$resp" | grep -q '"client_ip"';             check "estado expoe client_ip das cabines" "0" "$?"
+
+# Gera um PIN de pareamento numerico de 6 digitos.
+resp=$(curl -s -X POST "$BASE/api/admin/pairing" -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"generate":true}')
+PIN=$(printf '%s' "$resp" | jget 'd["pairing_pin"]')
+case "$PIN" in
+  [0-9][0-9][0-9][0-9][0-9][0-9]) ok=1;; *) ok=0;;
+esac
+check "admin gera PIN numerico de 6 digitos" "1" "$ok"
+echo "$resp" | grep -q '"pairing_enabled":true'; check "pareamento ativado" "0" "$?"
+
+# Cabine nova sem PIN (ou com PIN errado) -> 403 pairing_required.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d '{"booth_id":"pair-A"}')
+check "registro sem PIN -> 403" "403" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d '{"booth_id":"pair-A","pairing_pin":"000000x"}')
+check "registro com PIN errado -> 403" "403" "$code"
+
+# PIN correto -> pareia, guarda token e captura o IP (X-Forwarded-For).
+resp=$(curl -s -X POST "$BASE/api/booth/register" -H 'Content-Type: application/json' \
+  -H 'X-Forwarded-For: 10.20.30.40' \
+  -d "{\"booth_id\":\"pair-A\",\"pairing_pin\":\"$PIN\"}")
+BTOK=$(printf '%s' "$resp" | jget 'd["booth"]["pairing_token"]')
+echo "$resp" | grep -q '"label":"Cabine 03"'; check "PIN correto pareia a cabine (Cabine 03)" "0" "$?"
+[ -n "$BTOK" ]; check "resposta traz o pairing_token" "0" "$?"
+
+# Re-registro apresentando o token dispensa o PIN.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d "{\"booth_id\":\"pair-A\",\"pairing_token\":\"$BTOK\"}")
+check "re-registro com token -> 200" "200" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d '{"booth_id":"pair-A"}')
+check "re-registro sem token -> 403" "403" "$code"
+
+# O IP observado no heartbeat aparece no painel admin.
+curl -s -X POST "$BASE/api/booth/heartbeat" -H 'Content-Type: application/json' \
+  -H 'X-Forwarded-For: 10.20.30.40' -d '{"booth_id":"pair-A","status":"idle"}' >/dev/null
+resp=$(curl -s -H "X-Device-Token: $TOKEN" "$BASE/api/admin/state")
+echo "$resp" | grep -q '"client_ip":"10.20.30.40"'; check "IP do heartbeat exposto no admin" "0" "$?"
+
+# Remover / desconectar a cabine (deregistro).
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/booths/pair-A")
+printf '%s' "$resp" | grep -q '"label":"Cabine 03"'; check "cabine removida sai da lista" "1" "$?"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/booths/pair-A")
+check "remover cabine inexistente -> 404" "404" "$code"
+
+# Desativar o pareamento libera o registro novamente (modo legado).
+resp=$(curl -s -X POST "$BASE/api/admin/pairing" -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"clear":true}')
+echo "$resp" | grep -q '"pairing_enabled":false'; check "desativar pareamento" "0" "$?"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d '{"booth_id":"pair-B"}')
+check "apos desativar, registro aberto -> 200" "200" "$code"
+
 echo
 echo "RESULTADO: $pass passaram, $fail falharam"
 kill $SRV 2>/dev/null

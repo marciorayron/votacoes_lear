@@ -73,6 +73,15 @@
       font-size:.95rem; }
     .dot { width:12px; height:12px; border-radius:50%; background:var(--muted); }
     .dot.ok{background:var(--ok);} .dot.warn{background:var(--warn);} .dot.err{background:var(--err);}
+
+    /* ---------- Pareamento ---------- */
+    .pair-input {
+      width:min(60vw,420px); text-align:center; letter-spacing:.3em;
+      padding:20px 18px; border-radius:16px; border:2px solid var(--line);
+      background:var(--card); color:var(--fg); font-size:clamp(1.6rem,4vw,2.4rem);
+      font-weight:800; outline:none;
+    }
+    .pair-input:focus { border-color:var(--accent); }
     footer { padding:1vh 4vw 1.4vh; display:flex; justify-content:center; }
   </style>
 </head>
@@ -107,6 +116,20 @@
       <div class="result-title" id="done-title">Voto registrado!</div>
       <div class="result-sub" id="done-sub">Obrigado por participar.</div>
     </section>
+
+    <!-- Pareamento (cabine ainda nao registrada) -->
+    <section id="screen-pair" class="screen">
+      <div class="pulse">🔗</div>
+      <div class="wait-title">Cabine não pareada</div>
+      <div class="wait-sub">Digite o <b>PIN de pareamento</b> exibido no painel administrativo.</div>
+      <input id="pair-input" class="pair-input" type="text" inputmode="numeric"
+             autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="PIN" maxlength="16" />
+      <div class="wait-sub" id="pair-msg"></div>
+      <div class="actions">
+        <button class="btn confirm" id="pair-btn">Parear cabine</button>
+      </div>
+    </section>
   </main>
 
   <footer>
@@ -116,6 +139,7 @@
     const SCREEN_WAIT = document.getElementById('screen-wait');
     const SCREEN_VOTE = document.getElementById('screen-vote');
     const SCREEN_DONE = document.getElementById('screen-done');
+    const SCREEN_PAIR = document.getElementById('screen-pair');
     const waitTitle   = document.getElementById('wait-title');
     const waitSub     = document.getElementById('wait-sub');
     const waitDot     = document.getElementById('wait-dot');
@@ -129,6 +153,9 @@
     const doneIcon    = document.getElementById('done-icon');
     const doneTitle   = document.getElementById('done-title');
     const doneSub     = document.getElementById('done-sub');
+    const pairInput   = document.getElementById('pair-input');
+    const pairBtn     = document.getElementById('pair-btn');
+    const pairMsg     = document.getElementById('pair-msg');
 
     const POLL_INTERVAL_MS = 1000;   // cabine checa disponibilidade a cada 1s
     const DONE_HOLD_MS     = 4000;   // tempo exibindo a confirmacao
@@ -143,6 +170,7 @@
     const titleEl = document.getElementById('title');
     let boothId = null;                     // id estável deste kiosk (localStorage)
     let boothLabel = 'Cabine';
+    let pairingToken = null;                // prova de pareamento (localStorage)
     let wasAssigned = false;                // já estava liberada? (bip na transição)
     let heartbeatTimer = null;
 
@@ -194,42 +222,100 @@
         return id;
       } catch (e) { return makeBoothId(); }
     }
-    async function registerBooth() {
+    function loadPairingToken() {
+      try { return localStorage.getItem('voting_pairing_token') || null; }
+      catch (e) { return null; }
+    }
+    function savePairingToken(token) {
+      pairingToken = token;
+      try { if (token) localStorage.setItem('voting_pairing_token', token); }
+      catch (e) { /* localStorage indisponivel */ }
+    }
+
+    // Registra a cabine. Retorna {ok} | {pairing:true} | {offline:true}.
+    async function registerBooth(pin) {
+      const body = { booth_id: boothId };
+      if (pairingToken) body.pairing_token = pairingToken;
+      if (pin) body.pairing_pin = pin;
       try {
         const r = await fetch('/api/booth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ booth_id: boothId })
+          body: JSON.stringify(body)
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok && d.booth) {
           boothLabel = d.booth.label;
+          if (d.booth.pairing_token) savePairingToken(d.booth.pairing_token);
           titleEl.textContent = boothLabel + ' — Votação';
           document.title = boothLabel + ' — Votação';
+          return { ok: true };
         }
-      } catch (e) { /* offline: tenta de novo no proximo ciclo */ }
+        if (r.status === 403) return { pairing: true };   // PIN necessario/incorreto
+        return { ok: false };
+      } catch (e) { return { offline: true }; }
     }
+
+    // ---------------- Pareamento (PIN) ----------------
+    function showPairing(message) {
+      state = 'pair';
+      pairMsg.textContent = message || '';
+      show(SCREEN_PAIR);
+      pairInput.value = '';
+      pairInput.focus();
+    }
+    async function submitPairing() {
+      const pin = (pairInput.value || '').trim();
+      if (!pin) { pairMsg.textContent = 'Digite o PIN.'; return; }
+      pairBtn.disabled = true;
+      pairMsg.textContent = 'Validando…';
+      const res = await registerBooth(pin);
+      pairBtn.disabled = false;
+      if (res.ok) {
+        beepSuccess();
+        state = 'wait';
+        show(SCREEN_WAIT);
+        checkStatus();
+      } else if (res.pairing) {
+        beepError();
+        pairMsg.textContent = 'PIN incorreto. Tente novamente.';
+      } else if (res.offline) {
+        pairMsg.textContent = 'Servidor indisponível. Tente novamente.';
+      } else {
+        pairMsg.textContent = 'Não foi possível parear. Tente novamente.';
+      }
+    }
+    pairBtn.addEventListener('click', submitPairing);
+    pairInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPairing(); });
+
     async function sendHeartbeat(status) {
-      if (!boothId) return;
+      if (!boothId || state === 'pair') return;
       const body = { booth_id: boothId };
+      if (pairingToken) body.pairing_token = pairingToken;
       if (status) body.status = status;
       try {
         const r = await fetch('/api/booth/heartbeat', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-        if (r.status === 404) await registerBooth();   // re-registra se o servidor reiniciou
+        if (r.status === 404) await reRegister();   // servidor reiniciou / cabine removida
       } catch (e) { /* silencioso */ }
+    }
+    async function reRegister() {
+      const res = await registerBooth();
+      if (res.pairing) showPairing('Cabine não pareada. Informe o PIN.');
     }
     async function initBooth() {
       boothId = loadBoothId();
-      await registerBooth();
+      pairingToken = loadPairingToken();
+      const res = await registerBooth();
+      if (res.pairing) showPairing('');
       heartbeatTimer = setInterval(
         () => sendHeartbeat(state === 'wait' ? null : 'voting'),
         HEARTBEAT_MS);
     }
 
     function show(screen) {
-      [SCREEN_WAIT, SCREEN_VOTE, SCREEN_DONE].forEach(s => s.classList.remove('active'));
+      [SCREEN_WAIT, SCREEN_VOTE, SCREEN_DONE, SCREEN_PAIR].forEach(s => s.classList.remove('active'));
       screen.classList.add('active');
     }
 
@@ -247,6 +333,7 @@
     }
     // ------------------ Ciclo de disponibilidade ------------------
     async function checkStatus() {
+      if (state === 'pair') return;   // aguardando pareamento
       try {
         const url = '/api/booth/status' +
           (boothId ? '?booth_id=' + encodeURIComponent(boothId) : '');

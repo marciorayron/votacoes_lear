@@ -13,7 +13,7 @@ onde está conectado o **leitor NFC USB** (emulador de teclado/HID). Cabines
 | Rota          | Papel                                                                 |
 |---------------|-----------------------------------------------------------------------|
 | `/checkin`    | Interface de check-in exibida **no próprio servidor** (leitor NFC HID). |
-| `/cabine`     | Cabine de votação (tablet/touch em *kiosk mode*; numera-se sozinha).  |
+| `/cabine`     | Cabine de votação (tablet/touch em *kiosk mode*; numera-se e pareia-se via PIN). |
 | `/painel-tv`  | Painel público de resultados (TV) com gráfico de barras.              |
 | `/admin`      | Painel administrativo — cria/reseta/encerra plebiscitos dinâmicos.    |
 | `/admin/relatorio` | **Ata de Fechamento / Relatório Oficial** em A4 (imprimir/Salvar PDF). |
@@ -104,9 +104,11 @@ memória do processo:
 - a tabela `polls` guarda a **pergunta**, as **opções** (JSON) e o **`status`**
   (`open`/`closed`) do plebiscito, com `created_at`/`closed_at`;
 - a tabela `settings` (chave/valor) guarda **`active_poll_id`** (qual poll está
-  ativa) e **`voting_tokens`** (tamanho atual da fila de votação);
+  ativa), **`voting_tokens`** (tamanho atual da fila de votação) e
+  **`booth_pairing_pin`** (PIN de pareamento de novas cabines, quando ativo);
 - a tabela `booths` guarda as **cabines** (número amigável, rótulo, último
-  *heartbeat* e reserva atual), então a numeração sobrevive a reinícios.
+  *heartbeat*, reserva atual, **IP do cliente** e **token de pareamento**),
+  então a numeração e o pareamento sobrevivem a reinícios.
 
 As leituras/escritas usam uma conexão por requisição (`get_db`) e um lock
 (`threading.RLock`) que serializa o incremento/decremento da fila e o registro
@@ -129,7 +131,10 @@ token, apenas uma é aceita.
    * Cooldown de 2s no front-end + PK no banco = **nenhum voto duplo**.
 3. **Cabines** (`/cabine`) → cada kiosk registra-se (`/api/booth/register`) e
    envia *heartbeat* a cada 5s, recebendo um número amigável estável
-   (**Cabine 01**, **Cabine 02**, …). A cada 1s consulta
+   (**Cabine 01**, **Cabine 02**, …). Se o **pareamento** estiver ativo (PIN
+   gerado em `/admin`), uma cabine **nova** precisa informar o **PIN** na
+   primeira vez; aprovado, o *token* fica guardado no navegador
+   (*localStorage*) e dispensa o PIN nos próximos acessos. A cada 1s consulta
    `/api/booth/status?booth_id=…`; apenas a cabine **alocada** no check-in busca
    a pergunta/opções (`/api/poll`), mostra botões grandes e envia o voto
    (`/api/vote`), consumindo **exatamente um** token. Ao concluir, a cabine
@@ -146,8 +151,8 @@ token, apenas uma é aceita.
 |--------|-------------------------|------------------------------------------------------|
 | POST   | `/api/checkin`          | `{badge_id}` → valida, incrementa token e aloca cabine. |
 | GET    | `/api/booth/status`     | Tokens e estado do plebiscito. Com `?booth_id=…`, informa `assigned`/`booth`. |
-| POST   | `/api/booth/register`   | `{booth_id}` → registra a cabine e devolve número/rótulo. |
-| POST   | `/api/booth/heartbeat`  | `{booth_id, status?}` → mantém `online`; `status:"idle"` libera a reserva. |
+| POST   | `/api/booth/register`   | `{booth_id, pairing_pin?, pairing_token?}` → registra/pareia a cabine e devolve número/rótulo (+ `pairing_token` quando emitido). |
+| POST   | `/api/booth/heartbeat`  | `{booth_id, status?}` → mantém `online`, grava o IP do cliente; `status:"idle"` libera a reserva. |
 | GET    | `/api/booths`           | Lista das cabines (online / ociosa / alocada).       |
 | GET    | `/api/poll`             | Pergunta + opções ativas (sem contagens).            |
 | POST   | `/api/vote`             | `{option_id}` → consome 1 token e conta o voto.      |
@@ -162,6 +167,8 @@ token, apenas uma é aceita.
 | POST   | `/api/admin/reset`     | `{clear_voters}` → zera contadores.              |
 | POST   | `/api/admin/close`     | Encerra o plebiscito ativo.                      |
 | POST   | `/api/admin/tokens`    | `{count}` ou `{delta}` → ajuste manual da fila.  |
+| POST   | `/api/admin/pairing`   | `{generate}` / `{pin}` / `{clear}` → gera, define ou desativa o PIN de pareamento. |
+| DELETE | `/api/admin/booths/<id>` | Remove/desconecta (deregistra) uma cabine.      |
 
 Exemplo:
 
@@ -180,6 +187,11 @@ curl -X POST http://localhost:5000/api/admin/poll \
 - `/admin` é um *shell* sem dados; o desbloqueio guarda o token em
   `sessionStorage` e todas as chamadas enviam o header.
 - Votos são **anônimos**: a tabela `votes` guarda apenas `poll_id`/`option_id`.
+- O **pareamento de cabines** usa um PIN temporário (`booth_pairing_pin`): o
+  *token* aprovado fica só no navegador da cabine (*localStorage*) e é
+  revalidado a cada registro. O painel `/admin` mostra o **IP**, o **status**
+  e o **último heartbeat** de cada cabine e permite **remover/desconectar**
+  cabines obsoletas (o dispositivo passa a precisar parear novamente).
 - A fila de tokens é atualizada de forma **atômica** (lock + SQLite WAL); se
   duas cabines disputarem o último token, apenas uma é aceita.
 
@@ -277,14 +289,17 @@ Assim, depois de uma queda de energia, a cabine volta sozinha à tela de voto.
 ## 8. Testes
 
 ```bash
-bash test_e2e.sh       # fluxo funcional (52 cenários)
+bash test_e2e.sh       # fluxo funcional (67 cenários)
 bash test_db_path.sh   # resolução/fallback do caminho do SQLite (10 cenários)
 bash test_persist.sh   # persistência após reboot + atomicidade (24 cenários)
 ```
 
 - `test_e2e.sh` — fluxo funcional em porta isolada: autenticação por token,
   check-in, bloqueio de voto duplo, consumo de tokens, atraso dos resultados,
-  reset/close, todas as páginas, o **registro/numeração/alocação de cabines** e a
+  reset/close, todas as páginas, o **registro/numeração/alocação de cabines**, o
+  **pareamento por PIN** (geração/definição/desativação, registro sem PIN → 403,
+  reuso do token do `localStorage`), a **captura do IP do cliente** e a
+  **remoção/desconexão de cabines**, além da
   **Ata de Fechamento / Relatório Oficial** (endpoint `/api/admin/report` e página
   `/admin/relatorio`: HTTP 200 com token, 401 sem token, e estatísticas agregadas
   corretas — votos por opção, total de votos, votantes únicos e timestamps).
