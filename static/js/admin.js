@@ -401,46 +401,86 @@ document.getElementById('purge-btn').addEventListener('click', purgeDatabase);
 })();
 
 // ------------------ Painel de status ------------------
-function renderState(s) {
-  const open = !!s.poll_open;
-  const pollId = s.poll_id ?? '–';
-  document.getElementById('state-poll').textContent = open ? ('#' + pollId) : 'Fechado';
-  document.getElementById('state-tokens').textContent = s.voting_tokens ?? 0;
-  document.getElementById('state-total').textContent = s.total_votes ?? 0;
-  document.getElementById('poll-question').textContent = s.poll_question || 'Nenhum plebiscito ativo';
-  document.getElementById('poll-id-text').textContent = open ? ('Plebiscito #' + pollId) : 'Sem plebiscito aberto';
-
-  document.getElementById('btn-open').disabled = open;
-  document.getElementById('btn-close').disabled = !open;
-  document.getElementById('btn-purge').disabled = !s.has_results;
-
-  const results = s.results || [];
-  const total = s.total_votes || 0;
-  const bars = document.getElementById('results-bars');
-  const empty = document.getElementById('results-empty');
-  if (!results.length) {
-    bars.innerHTML = '';
-    empty.classList.remove('hidden');
-  } else {
-    empty.classList.add('hidden');
-    bars.innerHTML = results.map(r => {
-      const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
-      return '<div class="bar-item"><div class="top"><span>' + escapeHtml(r.text) +
-        '</span><span><b>' + r.count + '</b> (' + pct + '%)</span></div>' +
-        '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div></div>';
-    }).join('');
-  }
-
-  renderBooths(s.booths || []);
-  document.getElementById('new-token').value = s.current_token || '';
-  document.getElementById('new-token').placeholder = 'Nova senha de dispositivo';
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
 }
 
-function boothStatusInfo(mins) {
-  if (mins === null || mins === undefined) return { dot: '', txt: 'Sem sinal' };
-  if (mins < 2) return { dot: 'ok', txt: 'Online há menos de 2 min' };
-  if (mins < 10) return { dot: 'warn', txt: 'Última vez há ' + mins + ' min' };
-  return { dot: 'err', txt: 'Inativo há ' + mins + ' min' };
+// Atualiza o selo do PIN de pareamento na secao "Cabines & Pareamento".
+function renderPairing(pin) {
+  const badge = document.getElementById('pairing-pin');
+  if (!badge) return;
+  const active = !!pin;
+  badge.textContent = active ? pin : 'desativado';
+  badge.classList.toggle('off', !active);
+}
+
+// Minutos decorridos desde um timestamp ISO (ou null quando ausente/invalido).
+function minutesSince(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (isNaN(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 60000));
+}
+
+function renderState(s) {
+  s = s || {};
+  const poll = s.poll || null;
+  const open = !!poll && poll.status === 'open';
+  const total = poll ? (poll.total_votes || 0) : 0;
+
+  // Contadores da secao "Estado atual".
+  setText('s-tokens', s.voting_tokens ?? 0);
+  setText('s-voters', s.voters_checked_in ?? 0);
+  setText('s-total', total);
+
+  // Pergunta + linha de metadados do plebiscito.
+  setText('cur-question', poll ? (poll.question || 'Plebiscito ativo')
+                               : 'Nenhum plebiscito ativo.');
+  const meta = [];
+  if (poll) {
+    meta.push('Plebiscito #' + poll.id, open ? 'aberto' : 'encerrado');
+    if (poll.created_at) meta.push('criado: ' + poll.created_at);
+    if (poll.closed_at)  meta.push('encerrado: ' + poll.closed_at);
+  }
+  setText('cur-meta', meta.join(' · '));
+
+  // Barras de resultado (votos por opcao).
+  const bars = document.getElementById('cur-bars');
+  if (bars) {
+    const options = (poll && poll.options) || [];
+    if (!options.length || total === 0) {
+      bars.innerHTML = '<div class="muted">' +
+        (poll ? 'Sem votos registrados.' : 'Nenhum plebiscito ativo.') + '</div>';
+    } else {
+      bars.innerHTML = options.map(r => {
+        const count = r.count || 0;
+        const pct = Math.round((count / total) * 100);
+        return '<div class="bar-item"><div class="top"><span>' + escapeHtml(r.label) +
+          '</span><span><b>' + count + '</b> (' + pct + '%)</span></div>' +
+          '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div></div>';
+      }).join('');
+    }
+  }
+
+  // Botoes que dependem de haver um plebiscito aberto.
+  const resetBtn = document.getElementById('reset-btn');
+  const closeBtn = document.getElementById('close-btn');
+  if (resetBtn) resetBtn.disabled = !open;
+  if (closeBtn) closeBtn.disabled = !open;
+
+  // Pareamento e parametros exibidos na secao de cabines.
+  renderPairing(s.pairing_pin || '');
+  setText('cfg-delay', s.results_delay ?? '–');
+  setText('cfg-cooldown', s.cooldown ?? '–');
+
+  renderBooths(s.booths || []);
+}
+
+function boothStatusInfo(b) {
+  if (!b.online) return { dot: 'err', txt: 'Offline' };
+  if (b.assigned) return { dot: 'warn', txt: 'Em uso' };
+  return { dot: 'ok', txt: 'Ociosa' };
 }
 
 function fmtSeen(mins) {
@@ -452,33 +492,38 @@ function fmtSeen(mins) {
 }
 
 function renderBooths(booths) {
-  const body = document.getElementById('booth-body');
-  const empty = document.getElementById('booths-empty');
-  const table = document.getElementById('booth-table');
-  document.getElementById('booth-count').textContent = booths.length;
+  const body = document.getElementById('booth-rows');
+  if (!body) return;
   if (!booths.length) {
-    body.innerHTML = '';
-    table.classList.add('hidden');
-    empty.classList.remove('hidden');
+    body.innerHTML = '<tr><td colspan="5" class="muted">Nenhuma cabine registrada.</td></tr>';
     return;
   }
-  table.classList.remove('hidden');
-  empty.classList.add('hidden');
   body.innerHTML = booths.map(b => {
-    const info = boothStatusInfo(b.last_seen_min);
-    const pin = b.pairing_pin
-      ? '<span class="pin-badge">' + escapeHtml(b.pairing_pin) + '</span>'
-      : '<span class="pin-badge off">—</span>';
+    const info = boothStatusInfo(b);
     return '<tr>' +
-      '<td>' + escapeHtml(b.id) + '</td>' +
+      '<td>' + escapeHtml(b.label || b.id) + '</td>' +
+      '<td>' + escapeHtml(b.client_ip || '—') + '</td>' +
       '<td><span class="st"><span class="dot ' + info.dot + '"></span>' +
         escapeHtml(info.txt) + '</span></td>' +
-      '<td>' + fmtSeen(b.last_seen_min) + '</td>' +
-      '<td>' + pin + '</td>' +
+      '<td>' + fmtSeen(minutesSince(b.last_seen)) + '</td>' +
       '<td><button class="btn ghost small" data-rm-booth="' + escapeHtml(b.id) + '">Remover</button></td>' +
       '</tr>';
   }).join('');
   body.querySelectorAll('[data-rm-booth]').forEach(btn => {
     btn.addEventListener('click', () => removeBooth(btn.getAttribute('data-rm-booth')));
   });
+}
+
+async function removeBooth(id) {
+  if (!id) return;
+  if (!confirm('Remover a cabine? O dispositivo precisará parear novamente.')) return;
+  try {
+    const { ok, data } = await api('/api/admin/booths/' + encodeURIComponent(id), 'DELETE');
+    if (!ok) { toast('Falha ao remover a cabine.', 'err'); return; }
+    renderState(data);
+    toast('Cabine removida.', 'ok');
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao remover a cabine.', 'err');
+  }
 }
