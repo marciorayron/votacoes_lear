@@ -72,3 +72,27 @@ footer { color:#5b6b8a; font-size:.82rem; text-align:center; }
 .sound-toggle { background:transparent; border:1px solid var(--line); color:var(--muted);
                 border-radius:99px; padding:2px 12px; font:inherit; font-size:.82rem; cursor:pointer; }
 .sound-toggle:hover { color:var(--fg); border-color:var(--accent); }
+
+/* ---------------------------------------------------------------------------
+   Alerta de FILA CHEIA (check-in): borda/accent ambar + banner de aviso.
+   Ligado por JS quando voting_tokens >= queue_warning_threshold.
+   --------------------------------------------------------------------------- */
+.panel.warning-high-queue {
+  border-color:var(--warn);
+  box-shadow:0 0 0 3px var(--warn-soft), 0 24px 60px rgba(0,0,0,.45);
+  animation:queueAlert 1.1s ease-in-out infinite;
+}
+@keyframes queueAlert {
+  0%,100% { border-color:var(--warn); }
+  50%     { border-color:#fbbf24; }
+}
+.queue-warning {
+  display:flex; align-items:center; gap:12px; margin-bottom:18px;
+  border:2px solid var(--warn); border-radius:14px; padding:14px 18px;
+  background:var(--warn-soft); color:var(--warn);
+  font-weight:800; font-size:clamp(1rem,2vw,1.25rem); letter-spacing:.01em;
+  animation:queuePop .25s ease-out;
+}
+.queue-warning[hidden] { display:none; }
+.queue-warning .qw-ico { font-size:1.4em; line-height:1; }
+@keyframes queuePop { from { transform:scale(.96); opacity:0; } to { transform:scale(1); opacity:1; } }

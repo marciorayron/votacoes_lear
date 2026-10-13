@@ -58,7 +58,9 @@ from functools import wraps
 from logging.handlers import RotatingFileHandler
 from typing import Any, Optional
 
-from flask import Flask, g, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask, g, jsonify, redirect, render_template, request, send_file, url_for,
+)
 
 # --------------------------------------------------------------------------- #
 # Configuracao
@@ -92,6 +94,22 @@ REPORT_TITLE = "Ata de Fechamento — Relatório Oficial"
 
 POLL_STATUS_OPEN = "open"
 POLL_STATUS_CLOSED = "closed"
+
+# Limite de fila do check-in (padrao do sistema). Quando a fila de tokens
+# atingir este valor, a tela /checkin passa a exibir ALERTA AMARELO para o
+# operador pausar a leitura dos crachas. Fica persistido na tabela `settings`
+# (chave `queue_warning_threshold`) e pode ser ajustado dinamicamente pelo
+# painel administrativo (endpoint /api/admin/settings/queue-threshold).
+QUEUE_THRESHOLD_SETTING = "queue_warning_threshold"
+QUEUE_WARNING_THRESHOLD_DEFAULT = int(os.environ.get("QUEUE_WARNING_THRESHOLD", "5"))
+
+# Chave da tabela `settings` que guarda um PIN secundario opcional exigido na
+# purga do banco (alem do proprio Device Token). Vazio = apenas o token vale.
+PURGE_PIN_SETTING = "purge_pin"
+
+# Tabelas minimas que um arquivo .db precisa conter para ser aceito como
+# backup restauravel (validacao de schema no /api/admin/backup/restore).
+REQUIRED_TABLES = frozenset({"voters", "polls", "votes", "settings", "booths"})
 
 # Rastreamento de cabines (kiosks). Sem heartbeat por BOOTH_TIMEOUT_SECONDS a
 # cabine e considerada offline. Apos receber uma liberacao de check-in, a
@@ -394,6 +412,11 @@ def init_db() -> None:
         conn.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('active_poll_id', '')"
         )
+        # Limite de fila do check-in (Alerta Amarelo) - default configuravel.
+        conn.execute(
+            "INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)",
+            (QUEUE_THRESHOLD_SETTING, str(QUEUE_WARNING_THRESHOLD_DEFAULT)),
+        )
         # ------------------------------------------------------------------ #
         # Reset do estado VOLATIL de runtime a cada boot do servidor.
         # Evita que check-ins/reservas orfaos de execucoes anteriores deixem a
@@ -446,6 +469,55 @@ def set_setting(db: sqlite3.Connection, key: str, value: Any) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, str(value)),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Limite de fila do check-in (Alerta Amarelo)
+# --------------------------------------------------------------------------- #
+def get_queue_threshold(db: sqlite3.Connection) -> int:
+    """Limite da fila que dispara o alerta amarelo no check-in (>= 1)."""
+    raw = get_setting(db, QUEUE_THRESHOLD_SETTING, str(QUEUE_WARNING_THRESHOLD_DEFAULT))
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        value = QUEUE_WARNING_THRESHOLD_DEFAULT
+    return max(1, value)
+
+
+def set_queue_threshold(db: sqlite3.Connection, value: Any) -> int:
+    """Define o limite da fila (1..9999). Levanta ``ValueError`` se invalido."""
+    try:
+        threshold = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_threshold")
+    if threshold < 1 or threshold > 9999:
+        raise ValueError("threshold_out_of_range")
+    set_setting(db, QUEUE_THRESHOLD_SETTING, threshold)
+    return threshold
+
+
+# --------------------------------------------------------------------------- #
+# Verificacao secundaria da purga (Device Token ou PIN dedicado)
+# --------------------------------------------------------------------------- #
+def get_purge_pin(db: sqlite3.Connection) -> str:
+    """PIN secundario opcional exigido na purga (string vazia = desativado)."""
+    return get_setting(db, PURGE_PIN_SETTING, "").strip()
+
+
+def secondary_verified(db: sqlite3.Connection, provided: str) -> bool:
+    """True se a confirmacao secundaria confere com o Device Token ou o PIN.
+
+    Aceita tanto o ``DEVICE_TOKEN`` ativo (o mesmo header que autentica o
+    painel) quanto um ``purge_pin`` dedicado, quando configurado. Comparacoes em
+    tempo constante; string vazia nunca e valida.
+    """
+    provided = str(provided or "").strip()
+    if not provided:
+        return False
+    if _token_equal(provided, DEVICE_TOKEN):
+        return True
+    pin = get_purge_pin(db)
+    return bool(pin) and _pin_matches(provided, pin)
 
 
 # --------------------------------------------------------------------------- #
@@ -1028,6 +1100,7 @@ def api_booth_status():
         "poll_open": poll is not None,
         "poll_id": poll["id"] if poll else None,
         "booths_online": sum(1 for b in booths if b["online"]),
+        "queue_warning_threshold": get_queue_threshold(db),
         "results_delay": RESULTS_DELAY_SECONDS,
         "server_time": now_iso(),
     }
@@ -1317,6 +1390,7 @@ def api_health():
             "ok": True,
             "poll_open": poll is not None,
             "voting_tokens": get_voting_tokens(db),
+            "queue_warning_threshold": get_queue_threshold(db),
             "cooldown": CHECKIN_COOLDOWN_SECONDS,
             "results_delay": RESULTS_DELAY_SECONDS,
         }
@@ -1386,6 +1460,7 @@ def _admin_state(db: sqlite3.Connection) -> dict:
         "booths": list_booths(db),
         "pairing_pin": pairing_pin,
         "pairing_enabled": bool(pairing_pin),
+        "queue_warning_threshold": get_queue_threshold(db),
         "cooldown": CHECKIN_COOLDOWN_SECONDS,
         "results_delay": RESULTS_DELAY_SECONDS,
         "server_time": now_iso(),
@@ -1446,6 +1521,61 @@ def history_payload(db: sqlite3.Connection) -> dict:
         )
 
     return {"ok": True, "count": len(elections), "elections": elections}
+
+
+def history_report_payload(db: sqlite3.Connection) -> dict:
+    """Dados agregados de TODOS os plebiscitos para o Relatorio Geral.
+
+    Reaproveita ``history_payload`` (ja com votos/percentuais/votantes por
+    plebiscito) e soma os totais globais exibidos no documento A4: numero de
+    plebiscitos, quantos encerrados/em andamento, votos apurados e votantes
+    registrados (quando conhecidos).
+    """
+    history = history_payload(db)
+    elections = history["elections"]
+    stats = {
+        "polls": len(elections),
+        "closed": sum(1 for e in elections if e["status"] == POLL_STATUS_CLOSED),
+        "open": sum(1 for e in elections if e["status"] == POLL_STATUS_OPEN),
+        "total_votes": sum(e["total_votes"] for e in elections),
+        "total_voters": sum((e["voters"] or 0) for e in elections),
+    }
+    return {
+        "ok": True,
+        "factory_name": FACTORY_NAME,
+        "title": "Relatório Geral de Histórico",
+        "generated_at": now_iso(),
+        "stats": stats,
+        "elections": elections,
+    }
+
+
+def booth_audit_payload(db: sqlite3.Connection) -> dict:
+    """Dados das cabines para o Relatorio de Auditoria (A4).
+
+    Lista todas as cabines registradas com IP do cliente, status, ultimo
+    heartbeat e situacao de pareamento, alem dos contadores de auditoria e do
+    estado atual do PIN de pareamento.
+    """
+    booths = list_booths(db)
+    pairing_pin = get_pairing_pin(db)
+    stats = {
+        "total": len(booths),
+        "online": sum(1 for b in booths if b["online"]),
+        "in_use": sum(1 for b in booths if b["assigned"]),
+        "idle": sum(1 for b in booths if b["idle"]),
+        "paired": sum(1 for b in booths if b["paired"]),
+    }
+    return {
+        "ok": True,
+        "factory_name": FACTORY_NAME,
+        "title": "Relatório de Auditoria de Cabines",
+        "generated_at": now_iso(),
+        "server_time": now_iso(),
+        "booths": booths,
+        "stats": stats,
+        "pairing_enabled": bool(pairing_pin),
+    }
 
 
 @app.get("/api/admin/state")
@@ -1676,14 +1806,18 @@ def api_admin_history():
     return jsonify(history_payload(db))
 
 
-@app.delete("/api/admin/db/purge")
+@app.route("/api/admin/db/purge", methods=["DELETE", "POST"])
+@app.route("/api/admin/purge", methods=["POST", "DELETE"])
 @require_device_token
 def api_admin_db_purge():
     """Remove dados de TESTE do banco (acao destrutiva e IRREVERSIVEL).
 
     Exige confirmacao explicita, via query ``?confirm=1`` ou body JSON
-    ``{"confirm": true}``. O escopo vem de ``?scope=`` ou do body
-    (``{"scope": "all"|"logs"}``):
+    ``{"confirm": true}``, E uma verificacao SECUNDARIA (``secondary`` no body
+    ou ``?secondary=``) que deve conferir com o Device Token ativo ou com um
+    PIN dedicado (setting ``purge_pin``). Falha de verificacao -> 403.
+
+    O escopo vem de ``?scope=`` ou do body (``{"scope": "all"|"logs"}``):
 
       * ``all``  (default): apaga TODOS os plebiscitos, votos e check-ins e
         reinicia o ponteiro do plebiscito ativo e a fila de tokens;
@@ -1694,6 +1828,7 @@ def api_admin_db_purge():
     re-renderizacao no cliente.
     """
     data = request.get_json(silent=True) or {}
+    db = get_db()
 
     raw_confirm = data.get("confirm")
     if raw_confirm is None:
@@ -1709,8 +1844,23 @@ def api_admin_db_purge():
     if scope not in PURGE_SCOPES:
         return _user_error("invalid_scope", 400)
 
+    # Verificacao SECUNDARIA obrigatoria (Device Token ou PIN dedicado).
+    secondary = str(
+        data.get("secondary") or data.get("secondary_pin") or data.get("pin")
+        or request.args.get("secondary", "")
+    ).strip()
+    if not secondary_verified(db, secondary):
+        logger.warning(
+            "Purga recusada (403): verificacao secundaria invalida - scope=%s IP %s",
+            scope, _client_ip() or "desconhecido",
+        )
+        return _user_error(
+            "secondary_verification_required", 403,
+            detail="Confirmacao secundaria invalida: informe o Device Token "
+                   "ou o PIN de purga.",
+        )
+
     with _DB_LOCK:
-        db = get_db()
         removed_votes = db.execute("SELECT COUNT(*) AS c FROM votes").fetchone()["c"]
         removed_voters = db.execute("SELECT COUNT(*) AS c FROM voters").fetchone()["c"]
         removed_polls = db.execute("SELECT COUNT(*) AS c FROM polls").fetchone()["c"]
@@ -1756,6 +1906,236 @@ def api_admin_db_purge():
     })
 
 
+@app.delete("/api/admin/polls/<int:poll_id>")
+@require_device_token
+def api_admin_delete_poll(poll_id: int):
+    """Exclui um plebiscito individual e todos os votos associados.
+
+    Acao destrutiva e IRREVERSIVEL. Remove a linha do plebiscito em ``polls``,
+    os votos correlatos em ``votes`` e o snapshot de votantes preservado em
+    ``settings``. Quando o alvo e o plebiscito ATIVO, o estado ativo e
+    reiniciado (ponteiro ``active_poll_id``, fila de tokens e crachas), para
+    que o painel nao aponte para um plebiscito inexistente.
+
+    Retorna o estado do painel e o historico resultantes, prontos para
+    re-renderizacao no cliente.
+    """
+    with _DB_LOCK:
+        db = get_db()
+        row = db.execute("SELECT id FROM polls WHERE id = ?", (poll_id,)).fetchone()
+        if row is None:
+            return _user_error("unknown_poll", 404)
+
+        was_active = get_active_poll_id(db) == poll_id
+        removed_votes = db.execute(
+            "SELECT COUNT(*) AS c FROM votes WHERE poll_id = ?", (poll_id,)
+        ).fetchone()["c"]
+
+        db.execute("DELETE FROM votes WHERE poll_id = ?", (poll_id,))
+        db.execute("DELETE FROM polls WHERE id = ?", (poll_id,))
+        db.execute(
+            "DELETE FROM settings WHERE key = ?", (_closed_voters_key(poll_id),)
+        )
+
+        if was_active:
+            # Reseta o estado ativo: nada mais pode apontar para o excluido.
+            set_setting(db, "active_poll_id", "")
+            set_voting_tokens(db, 0)
+            clear_voters(db)
+        db.commit()
+
+        state = _admin_state(db)
+        history = history_payload(db)
+
+    logger.info(
+        "Plebiscito %s excluido%s (%s voto(s) removido(s)).",
+        poll_id, " - era o ativo" if was_active else "", removed_votes,
+    )
+    return jsonify({
+        "ok": True,
+        "poll_id": poll_id,
+        "was_active": was_active,
+        "removed": {"votes": removed_votes, "polls": 1},
+        "state": state,
+        "history": history,
+        "detail": "Plebiscito excluido com sucesso.",
+    })
+
+
+# --------------------------------------------------------------------------- #
+# API: Configuracoes (limite de fila do check-in)
+# --------------------------------------------------------------------------- #
+@app.route("/api/admin/settings/queue-threshold", methods=["GET", "POST"])
+@require_device_token
+def api_admin_queue_threshold():
+    """Le/define o limite de fila que dispara o Alerta Amarelo no check-in.
+
+    GET  -> ``{"ok": true, "queue_warning_threshold": N}``
+    POST -> body ``{"threshold": N}`` (aliases: ``value``/``queue_warning_threshold``)
+            Grava na tabela ``settings`` e devolve o novo valor.
+    """
+    db = get_db()
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "queue_warning_threshold": get_queue_threshold(db),
+        })
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get("threshold")
+    if raw is None:
+        raw = data.get("value")
+    if raw is None:
+        raw = data.get("queue_warning_threshold")
+    if raw is None:
+        return _user_error("threshold_required", 400,
+                           detail="Informe o campo 'threshold' (numero >= 1).")
+
+    with _DB_LOCK:
+        try:
+            value = set_queue_threshold(db, raw)
+        except ValueError as exc:
+            return _user_error(str(exc), 400,
+                               detail="O limite deve ser um numero entre 1 e 9999.")
+        db.commit()
+        state = _admin_state(db)
+
+    logger.info("Limite de fila do check-in ajustado para %s (IP %s).",
+                value, _client_ip() or "desconhecido")
+    return jsonify({
+        "ok": True,
+        "queue_warning_threshold": value,
+        "state": state,
+        "detail": f"Limite de fila definido em {value}.",
+    })
+
+
+# --------------------------------------------------------------------------- #
+# API: Backup e restauracao do banco (1 clique)
+# --------------------------------------------------------------------------- #
+def _safe_remove(path: str) -> None:
+    """Remove um arquivo temporario, ignorando erros (best-effort)."""
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
+@app.get("/api/admin/backup/download")
+@require_device_token
+def api_admin_backup_download():
+    """Gera e serve um backup CONSISTENTE do banco (API de backup do SQLite).
+
+    Usa ``sqlite3.Connection.backup`` para copiar a base ativa (mesmo com a
+    conexao em modo WAL e sob concorrencia) para um arquivo temporario e o
+    entrega como download ``votacao_backup_YYYYMMDD_HHMMSS.db``.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"votacao_backup_{stamp}.db"
+
+    fd, tmp_path = tempfile.mkstemp(prefix="votacao_backup_", suffix=".db")
+    os.close(fd)
+    try:
+        source = get_db()
+        dest = sqlite3.connect(tmp_path)
+        try:
+            with dest:
+                source.backup(dest)
+        finally:
+            dest.close()
+    except sqlite3.Error as exc:
+        _safe_remove(tmp_path)
+        logger.error("Falha ao gerar o backup do banco: %s", exc)
+        return _user_error("backup_failed", 500, detail=str(exc))
+
+    logger.info("Backup do banco gerado: %s (IP %s).",
+                filename, _client_ip() or "desconhecido")
+
+    response = send_file(
+        tmp_path, as_attachment=True, download_name=filename,
+        mimetype="application/octet-stream", max_age=0,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    # Apaga o arquivo temporario assim que a resposta for concluida.
+    response.call_on_close(lambda: _safe_remove(tmp_path))
+    return response
+
+
+@app.post("/api/admin/backup/restore")
+@require_device_token
+def api_admin_backup_restore():
+    """Restaura o banco a partir de um arquivo .db enviado (multipart ``file``).
+
+    Valida que o upload e um SQLite INTEGRO e com o schema esperado antes de
+    sobrescrever o banco ativo (via API de backup do SQLite, de forma atomica).
+    Apos restaurar, reinicia o estado VOLATIL (cabines ociosas, fila zerada) e
+    registra o evento em ``app.log``.
+    """
+    upload = request.files.get("file")
+    if upload is None or not (upload.filename or "").strip():
+        return _user_error("file_required", 400,
+                           detail="Envie o arquivo de backup (.db) no campo 'file'.")
+
+    fd, tmp_path = tempfile.mkstemp(prefix="votacao_restore_", suffix=".db")
+    os.close(fd)
+    probe = None
+    try:
+        upload.save(tmp_path)
+
+        try:
+            probe = sqlite3.connect(tmp_path)
+            integrity = probe.execute("PRAGMA integrity_check").fetchone()[0]
+        except sqlite3.Error as exc:
+            logger.warning("Restauracao recusada: arquivo invalido (%s).", exc)
+            return _user_error("invalid_sqlite", 400,
+                               detail="O arquivo enviado nao e um banco SQLite valido.")
+
+        if str(integrity).lower() != "ok":
+            logger.warning("Restauracao recusada: integridade='%s'.", integrity)
+            return _user_error(
+                "corrupt_backup", 400,
+                detail="O banco de backup esta corrompido (integrity_check falhou).",
+            )
+
+        tables = {
+            row[0]
+            for row in probe.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        missing = sorted(REQUIRED_TABLES - tables)
+        if missing:
+            logger.warning("Restauracao recusada: tabelas ausentes %s.", missing)
+            return _user_error(
+                "invalid_schema", 400,
+                detail="Backup incompativel. Tabelas ausentes: " + ", ".join(missing),
+            )
+
+        with _DB_LOCK:
+            db = get_db()
+            probe.backup(db)  # sobrescreve o banco ativo com o conteudo do backup
+            db.execute("UPDATE booths SET status = 'idle', busy_until = NULL")
+            set_voting_tokens(db, 0)
+            db.commit()
+            state = _admin_state(db)
+            history = history_payload(db)
+    finally:
+        if probe is not None:
+            probe.close()
+        _safe_remove(tmp_path)
+
+    logger.info(
+        "Banco de dados RESTAURADO a partir de '%s' (IP %s). Estado volatil "
+        "reiniciado (cabines ociosas, fila zerada).",
+        upload.filename, _client_ip() or "desconhecido",
+    )
+    return jsonify({
+        "ok": True,
+        "state": state,
+        "history": history,
+        "detail": "Banco de dados restaurado com sucesso.",
+    })
+
+
 # --------------------------------------------------------------------------- #
 # Relatorio oficial / Ata de fechamento (protegido por X-Device-Token)
 # --------------------------------------------------------------------------- #
@@ -1779,6 +2159,31 @@ def _fmt_dt(value: Optional[str]) -> str:
     return dt.strftime("%d/%m/%Y %H:%M UTC")
 
 
+def _admin_page_denied(label: str):
+    """Resposta HTML 401 padrao para as paginas de relatorio (Ata/relatorios).
+
+    As paginas de relatorio sao abertas em nova aba e nao consomem JSON:
+    devolvemos um documento minimo em portugues com o mesmo status HTTP das
+    APIs administrativas. Retorna ``None`` quando o token e valido.
+    """
+    provided = _extract_token()
+    if _token_valid(provided):
+        return None
+    logger.warning(
+        "Falha de autenticacao admin (401) em %s - IP %s",
+        label, _client_ip() or "desconhecido",
+    )
+    return (
+        "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
+        "<title>Acesso negado</title></head><body "
+        "style=\"font-family:system-ui,sans-serif;padding:40px\">"
+        "<h1>401 — Acesso negado</h1>"
+        "<p>Token de dispositivo ausente ou inválido. "
+        "Abra o relatório pelo painel administrativo.</p></body></html>",
+        401,
+    )
+
+
 @app.get("/admin/relatorio")
 def admin_report_page():
     """Ata de fechamento em HTML/A4 pronta para impressao ou "Salvar como PDF".
@@ -1786,24 +2191,50 @@ def admin_report_page():
     Mesma protecao das rotas administrativas: Device Token via header
     ``X-Device-Token`` ou ``?token=...`` (usado no link do painel).
     """
-    provided = _extract_token()
-    if not _token_valid(provided):
-        logger.warning(
-            "Falha de autenticacao admin (401) na Ata de fechamento - IP %s",
-            _client_ip() or "desconhecido",
-        )
-        return (
-            "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
-            "<title>Acesso negado</title></head><body "
-            "style=\"font-family:system-ui,sans-serif;padding:40px\">"
-            "<h1>401 — Acesso negado</h1>"
-            "<p>Token de dispositivo ausente ou inválido. "
-            "Abra o relatório pelo painel administrativo.</p></body></html>",
-            401,
-        )
+    denied = _admin_page_denied("Ata de fechamento")
+    if denied is not None:
+        return denied
     db = get_db()
     return render_template(
-        "relatorio.html", report=report_payload(db), token=provided
+        "relatorio.html", report=report_payload(db), token=_extract_token()
+    )
+
+
+@app.get("/admin/relatorio/historico")
+def admin_history_report_page():
+    """Relatorio Geral de Historico (A4): resumo de todos os plebiscitos.
+
+    Mesma protecao das rotas administrativas (Device Token via header ou
+    ``?token=...``). Traz o resumo consolidado (plebiscitos concluidos,
+    comparecimento e totais) e o detalhamento por plebiscito.
+    """
+    denied = _admin_page_denied("Relatorio Geral de Historico")
+    if denied is not None:
+        return denied
+    db = get_db()
+    return render_template(
+        "relatorio_historico.html",
+        report=history_report_payload(db),
+        token=_extract_token(),
+    )
+
+
+@app.get("/admin/relatorio/cabines")
+def admin_booth_report_page():
+    """Relatorio de Auditoria de Cabines (A4): cabines, IPs e heartbeats.
+
+    Mesma protecao das rotas administrativas (Device Token via header ou
+    ``?token=...``). Lista cabines ativas/offline, endereco IP observado,
+    ultimo heartbeat e situacao de pareamento.
+    """
+    denied = _admin_page_denied("Relatorio de Auditoria de Cabines")
+    if denied is not None:
+        return denied
+    db = get_db()
+    return render_template(
+        "relatorio_cabines.html",
+        report=booth_audit_payload(db),
+        token=_extract_token(),
     )
 
 

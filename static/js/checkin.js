@@ -12,10 +12,17 @@ const cooldownLbl = document.getElementById('cooldown-label');
 const boothBanner = document.getElementById('booth-banner');
 const boothNumber = document.getElementById('booth-number');
 const boothSub    = document.getElementById('booth-sub');
+const panel       = document.getElementById('checkin-panel');
+const queueWarning = document.getElementById('queue-warning');
+const queueWarningText = document.getElementById('queue-warning-text');
 
 let cooling = false;
 let lastBadge = '';
 let lastBadgeAt = 0;
+
+// Alerta de fila cheia: limite vem do servidor (settings.queue_warning_threshold).
+let queueThreshold = 5;    // valor padrao ate a primeira resposta do servidor
+let queueWarned = false;   // evita repetir o bipe enquanto a fila permanece cheia
 
 // ---------------- Áudio (Web Audio API — sem arquivos externos) ----------------
 // Bipe agudo e agradável = sucesso/liberação; buzina grave = erro.
@@ -54,6 +61,8 @@ function tone(freq, startAt, dur, type, peak) {
 
 function beepSuccess() { tone(880, 0, 0.12, 'sine', 0.28); tone(1320, 0.11, 0.16, 'sine', 0.24); }
 function beepError()   { tone(200, 0, 0.18, 'square', 0.20); tone(150, 0.16, 0.30, 'square', 0.18); }
+// Bipe SUAVE e ascendente de alerta (fila cheia) — avisa sem assustar.
+function beepWarn()    { tone(660, 0, 0.16, 'sine', 0.16); tone(880, 0.18, 0.20, 'sine', 0.14); }
 
 // O navegador só libera áudio após um gesto do usuário.
 let audioPrimed = false;
@@ -91,12 +100,28 @@ function hideBoothBanner() {
   boothBanner.classList.remove('show');
 }
 
+// Aplica o estado da fila: liga o ALERTA AMARELO quando a fila enche.
+// Também exibe o banner e toca um bipe suave na transição para "fila cheia".
+function applyQueueState(tokens, threshold) {
+  if (Number.isFinite(threshold) && threshold >= 1) queueThreshold = threshold;
+  const full = Number.isFinite(tokens) && tokens >= queueThreshold;
+  if (panel) panel.classList.toggle('warning-high-queue', full);
+  if (queueWarning) queueWarning.hidden = !full;
+  if (full && queueWarningText) {
+    queueWarningText.textContent = 'FILA CHEIA (' + tokens +
+      ' aguardando cabine) — Aguarde liberação das cabines';
+  }
+  if (full && !queueWarned) { beepWarn(); queueWarned = true; }
+  else if (!full) { queueWarned = false; }
+}
+
 function refreshTokens() {
   fetch('/api/booth/status', { cache: 'no-store' })
     .then(r => r.json())
     .then(d => {
       tokensEl.textContent = (d.voting_tokens ?? '–');
       queueHint.textContent = d.poll_open ? (d.available ? 'Há vaga' : 'Sem vaga') : 'Sem plebiscito';
+      applyQueueState(d.voting_tokens, d.queue_warning_threshold);
     })
     .catch(() => { tokensEl.textContent = '–'; queueHint.textContent = 'offline'; });
 }

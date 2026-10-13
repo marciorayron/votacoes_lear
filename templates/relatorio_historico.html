@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Relatório Geral de Histórico</title>
+  <!-- Tema global: theme.js aplica data-theme no <head> para evitar FOUC. -->
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/relatorio.css') }}" />
+</head>
+<body>
+
+  <!-- ===================== Barra de ferramentas (nao imprime) ===================== -->
+  <div class="toolbar no-print">
+    <div>
+      <strong>📊 Relatório Geral de Histórico</strong>
+      <div class="hint">Use “Imprimir / Salvar PDF” para exportar em A4.</div>
+    </div>
+    <div class="actions">
+      <button class="primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+      <a class="btn ghost" href="{{ url_for('admin_page') }}?token={{ token }}">← Voltar ao painel</a>
+    </div>
+  </div>
+
+  <!-- ===================== Folha A4 ===================== -->
+  <div class="page">
+    <header class="report">
+      <div class="org">{{ report.factory_name }}</div>
+      <h1>Relatório Geral de Histórico</h1>
+      <div class="sub">Documento gerado em {{ report.generated_at | fmt_dt }} ·
+        {{ report.stats.polls }} plebiscito(s) registrado(s)</div>
+    </header>
+
+    <h2 class="section">Resumo consolidado</h2>
+    <div class="summary">
+      <div class="box">
+        <div class="v">{{ report.stats.polls }}</div>
+        <div class="l">Plebiscitos registrados</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.closed }}</div>
+        <div class="l">Encerrados</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.open }}</div>
+        <div class="l">Em andamento</div>
+      </div>
+    </div>
+    <div class="summary">
+      <div class="box">
+        <div class="v">{{ report.stats.total_votes }}</div>
+        <div class="l">Votos apurados (total)</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.total_voters }}</div>
+        <div class="l">Votantes registrados (total)</div>
+      </div>
+    </div>
+
+    {% if report.elections %}
+    <h2 class="section">Plebiscitos registrados</h2>
+    <table class="results">
+      <thead>
+        <tr>
+          <th class="num col-id">#</th>
+          <th>Pergunta</th>
+          <th>Situação</th>
+          <th>Abertura</th>
+          <th>Encerramento</th>
+          <th class="num col-votes">Votos</th>
+          <th class="num col-votes">Votantes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in report.elections %}
+        <tr>
+          <td class="num">#{{ e.id }}</td>
+          <td>{{ e.question }}</td>
+          <td>
+            <span class="status-tag {{ 'status-closed' if e.status == 'closed' else 'status-open' }}">
+              {{ 'ENCERRADO' if e.status == 'closed' else 'EM ANDAMENTO' }}
+            </span>
+          </td>
+          <td>{{ e.created_at | fmt_dt }}</td>
+          <td>{{ e.closed_at | fmt_dt if e.closed_at else '—' }}</td>
+          <td class="num">{{ e.total_votes }}</td>
+          <td class="num">{{ e.voters if e.voters is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total">
+          <td class="num" colspan="5">Totais gerais</td>
+          <td class="num">{{ report.stats.total_votes }}</td>
+          <td class="num">{{ report.stats.total_voters }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 class="section">Detalhamento por plebiscito</h2>
+    {% for e in report.elections %}
+    <div class="poll-block">
+      <div class="question">#{{ e.id }} · {{ e.question }}</div>
+      <table class="results">
+        <thead>
+          <tr>
+            <th class="num col-id">#</th>
+            <th>Opção</th>
+            <th class="num col-votes">Votos</th>
+            <th class="num col-votes">Percentual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for opt in e.options %}
+          <tr>
+            <td class="num">{{ loop.index }}</td>
+            <td>{{ opt.label }}</td>
+            <td class="num">{{ opt.count }}</td>
+            <td class="num">{{ '%.1f' | format(opt.percent) }}%</td>
+          </tr>
+          {% endfor %}
+          <tr class="total">
+            <td class="num" colspan="2">Total de votos apurados</td>
+            <td class="num">{{ e.total_votes }}</td>
+            <td class="num">{{ '100.0' if e.total_votes else '0.0' }}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+
+    <div class="statement">
+      <p>Este relatório consolida o histórico dos plebiscitos realizados no âmbito
+        desta unidade, apresentando o resultado de cada consulta e os totais
+        gerais de comparecimento. Documento emitido eletronicamente pelo Sistema
+        de Votação Local.</p>
+    </div>
+    {% else %}
+    <div class="empty">
+      Nenhum plebiscito registrado. Crie e conclua plebiscitos no painel
+      administrativo para compor o histórico.
+    </div>
+    {% endif %}
+
+    <footer class="report">
+      <span>{{ report.factory_name }} · Relatório Geral de Histórico</span>
+      <span>Documento gerado em {{ report.generated_at | fmt_dt }} · Sistema de Votação Local</span>
+    </footer>
+  </div>
+</body>
+</html>

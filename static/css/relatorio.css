@@ -86,6 +86,10 @@ footer.report { margin-top:34px; border-top:1px solid var(--line); padding-top:1
 
 .empty { text-align:center; color:var(--muted); padding:40px 0; font-size:12pt; }
 
+/* Blocos por plebiscito (Relatorio Geral de Historico) */
+.poll-block { margin:0 0 18px; }
+.poll-block .question { margin-bottom:8px; }
+
 /* Regras de impressao */
 @page { size:A4; margin:14mm; }
 @media print {
@@ -94,4 +98,7 @@ footer.report { margin-top:34px; border-top:1px solid var(--line); padding-top:1
   .page { width:auto; min-height:auto; margin:0; padding:0; box-shadow:none; }
   h2.section, .question { break-inside:avoid; }
   .signatures { break-inside:avoid; }
+  .poll-block { break-inside:avoid; }
+  table { break-inside:auto; }
+  tr { break-inside:avoid; }
 }

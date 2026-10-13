@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Relatório de Auditoria de Cabines</title>
+  <!-- Tema global: theme.js aplica data-theme no <head> para evitar FOUC. -->
+  <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/relatorio.css') }}" />
+</head>
+<body>
+
+  <!-- ===================== Barra de ferramentas (nao imprime) ===================== -->
+  <div class="toolbar no-print">
+    <div>
+      <strong>🖥️ Relatório de Auditoria de Cabines</strong>
+      <div class="hint">Use “Imprimir / Salvar PDF” para exportar em A4.</div>
+    </div>
+    <div class="actions">
+      <button class="primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+      <a class="btn ghost" href="{{ url_for('admin_page') }}?token={{ token }}">← Voltar ao painel</a>
+    </div>
+  </div>
+
+  <!-- ===================== Folha A4 ===================== -->
+  <div class="page">
+    <header class="report">
+      <div class="org">{{ report.factory_name }}</div>
+      <h1>Relatório de Auditoria de Cabines</h1>
+      <div class="sub">Documento gerado em {{ report.generated_at | fmt_dt }}</div>
+    </header>
+
+    <h2 class="section">Resumo das cabines</h2>
+    <div class="summary">
+      <div class="box">
+        <div class="v">{{ report.stats.total }}</div>
+        <div class="l">Cabines registradas</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.online }}</div>
+        <div class="l">Online</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.in_use }}</div>
+        <div class="l">Em uso</div>
+      </div>
+      <div class="box">
+        <div class="v">{{ report.stats.idle }}</div>
+        <div class="l">Ociosas</div>
+      </div>
+    </div>
+
+    <h2 class="section">Situação do pareamento</h2>
+    <table class="meta">
+      <tr>
+        <td class="label">Pareamento de novas cabines</td>
+        <td>
+          <span class="status-tag {{ 'status-closed' if report.pairing_enabled else 'status-open' }}">
+            {{ 'ATIVO (PIN configurado)' if report.pairing_enabled else 'DESATIVADO (registro aberto)' }}
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">Cabines pareadas</td>
+        <td>{{ report.stats.paired }}</td>
+      </tr>
+      <tr>
+        <td class="label">Horário do servidor</td>
+        <td>{{ report.server_time | fmt_dt }}</td>
+      </tr>
+    </table>
+
+    <h2 class="section">Cabines monitoradas</h2>
+    {% if report.booths %}
+    <table class="results">
+      <thead>
+        <tr>
+          <th>Cabine</th>
+          <th>Identificador</th>
+          <th>Endereço IP</th>
+          <th>Status</th>
+          <th>Último heartbeat</th>
+          <th>Pareada</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in report.booths %}
+        <tr>
+          <td>{{ b.label }}</td>
+          <td>{{ b.id }}</td>
+          <td>{{ b.client_ip or '—' }}</td>
+          <td>
+            <span class="status-tag {{ 'status-closed' if b.online else 'status-open' }}">
+              {{ 'EM USO' if b.assigned else ('OCIOSA' if b.idle else 'OFFLINE') }}
+            </span>
+          </td>
+          <td>{{ b.last_seen | fmt_dt }}</td>
+          <td>{{ 'Sim' if b.paired else 'Não' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Nenhuma cabine registrada até o momento.</div>
+    {% endif %}
+
+    <div class="statement">
+      <p>Este relatório registra, para fins de auditoria, as cabines de votação
+        conhecidas pelo servidor, seus endereços de rede observados e o instante do
+        último sinal de vida (heartbeat). Cabines sem heartbeat dentro da janela de
+        tolerância são classificadas como <strong>OFFLINE</strong>.</p>
+    </div>
+
+    <footer class="report">
+      <span>{{ report.factory_name }} · Auditoria de Cabines</span>
+      <span>Documento gerado em {{ report.generated_at | fmt_dt }} · Sistema de Votação Local</span>
+    </footer>
+  </div>
+</body>
+</html>

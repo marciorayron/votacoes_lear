@@ -13,7 +13,12 @@
   <h1>Check-in de Eleitor 🪪</h1>
   <p class="lede">Aproxime o crachá do leitor NFC. O número é lido automaticamente.</p>
 
-  <div class="panel">
+  <div class="panel" id="checkin-panel">
+    <div id="queue-warning" class="queue-warning" role="alert" aria-live="assertive" hidden>
+      <span class="qw-ico">⚠️</span>
+      <span id="queue-warning-text">FILA CHEIA — Aguarde liberação das cabines</span>
+    </div>
+
     <label for="badge">Crachá (leitor NFC)</label>
     <input id="badge" type="text" autocomplete="off" autocapitalize="off"
            spellcheck="false" placeholder="Aguardando leitura..." autofocus />

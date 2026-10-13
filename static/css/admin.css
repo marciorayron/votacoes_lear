@@ -60,12 +60,16 @@ body { min-height:100vh; }
 @media (max-width:960px){ .grid { grid-template-columns:1fr; } }
 label.field { display:block; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
               color:var(--muted); margin:16px 0 8px; }
-input[type=text], input[type=password], textarea, select {
+input[type=text], input[type=password], input[type=number], textarea, select {
   width:100%; padding:13px 15px; border-radius:12px; border:1px solid var(--line);
   background:var(--input); color:var(--fg); font-size:1rem; outline:none; font-family:inherit;
 }
-input[type=text]:focus, input[type=password]:focus, textarea:focus, select:focus { border-color:var(--accent); }
+input[type=text]:focus, input[type=password]:focus, input[type=number]:focus, textarea:focus, select:focus { border-color:var(--accent); }
 textarea { resize:vertical; min-height:74px; }
+input[type=file] {
+  flex:1; padding:11px 13px; border-radius:12px; border:1px dashed var(--line);
+  background:var(--input); color:var(--muted); font-size:.9rem;
+}
 .option-row { display:flex; gap:10px; margin-bottom:10px; }
 .option-row input { flex:1; }
 .icon-btn { border:1px solid var(--line); background:var(--input); color:var(--muted); border-radius:12px;
@@ -139,9 +143,16 @@ html[data-theme="light"] .btn.report.highlight { color:#ffffff; }
 .hist-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .hist-q { font-weight:700; line-height:1.3; }
 .hist-meta { font-size:.8rem; margin:8px 0 12px; word-break:break-word; }
-.hist-opts { display:flex; flex-wrap:wrap; gap:8px 18px; }
-.hist-opt { display:flex; gap:8px; align-items:center; font-size:.9rem; }
+.hist-opts { display:flex; flex-direction:column; gap:10px; }
+.hist-opt { display:flex; flex-direction:column; gap:5px; font-size:.9rem; }
+.hist-opt-top { display:flex; justify-content:space-between; gap:10px; }
 .hist-opt b { color:var(--accent); }
+.hist-opt .track { height:14px; background:var(--input); border:1px solid var(--line);
+                   border-radius:99px; overflow:hidden; }
+.hist-opt .fill { height:100%; background:linear-gradient(90deg,#38bdf8,#22c55e); width:0;
+                  transition:width .35s ease; }
+.hist-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;
+                padding-top:12px; border-top:1px solid var(--line); }
 .badge { font-size:.7rem; font-weight:800; letter-spacing:.06em; padding:4px 10px; border-radius:99px;
          white-space:nowrap; border:1px solid transparent; }
 .badge.b-open   { background:var(--ok-soft);   color:var(--ok);   border-color:var(--ok); }
@@ -149,6 +160,9 @@ html[data-theme="light"] .btn.report.highlight { color:#ffffff; }
 .danger-zone { border:1px solid var(--err); border-radius:16px; padding:20px; margin-top:20px;
                background:var(--err-soft); }
 .danger-zone h4 { margin:0 0 8px; color:var(--err); display:flex; align-items:center; gap:8px; }
+.backup-zone { border:1px solid var(--line); border-radius:16px; padding:20px; margin-top:20px;
+               background:var(--input); }
+.backup-zone h4 { margin:0 0 8px; color:var(--accent); display:flex; align-items:center; gap:8px; }
 
 /* ------------------ Toast / dicas ------------------ */
 .toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:var(--card);
@@ -171,3 +185,17 @@ html[data-theme="light"] .btn.report.highlight { color:#ffffff; }
 .hint.spaced { margin-top:18px; }
 .section-title { margin-top:20px; }
 .muted.relaxed { line-height:1.6; }
+
+/* ------------------ Relatórios & Atas ------------------ */
+.report-grid { display:flex; flex-direction:column; gap:14px; margin-top:6px; }
+.report-opt { display:flex; align-items:center; gap:16px; border:1px solid var(--line);
+              border-radius:14px; padding:16px 18px; background:var(--input); }
+.report-opt-ico { font-size:1.8rem; line-height:1; flex:none; }
+.report-opt-body { flex:1; min-width:0; }
+.report-opt-title { font-weight:700; margin-bottom:4px; }
+.report-opt-desc { font-size:.85rem; color:var(--muted); line-height:1.45; }
+.report-opt .btn { flex:none; }
+@media (max-width:640px) {
+  .report-opt { flex-wrap:wrap; }
+  .report-opt .btn { width:100%; }
+}

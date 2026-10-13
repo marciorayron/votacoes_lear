@@ -70,7 +70,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Device-Token: $TOK
 check "purge scope invalido -> 400" "400" "$code"
 
 echo "== 5. Purga escopo 'logs' (preserva plebiscitos) =="
-resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/db/purge?confirm=1&scope=logs")
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/db/purge?confirm=1&scope=logs&secondary=$TOKEN")
 check "scope = logs" "logs" "$(printf '%s' "$resp" | jget 'd["scope"]')"
 check "logs removeu 2 votos" "2" "$(printf '%s' "$resp" | jget 'd["removed"]["votes"]')"
 check "logs removeu 0 plebiscitos" "0" "$(printf '%s' "$resp" | jget 'd["removed"]["polls"]')"
@@ -79,7 +79,7 @@ check "logs: votos do primeiro = 0" "0" \
   "$(printf '%s' "$resp" | jget 'd["history"]["elections"][1]["total_votes"]')"
 
 echo "== 6. Purga escopo 'all' (zera o banco) =="
-resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/db/purge?confirm=1&scope=all")
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/db/purge?confirm=1&scope=all&secondary=$TOKEN")
 check "scope = all" "all" "$(printf '%s' "$resp" | jget 'd["scope"]')"
 check "all removeu 2 plebiscitos" "2" "$(printf '%s' "$resp" | jget 'd["removed"]["polls"]')"
 check "all: historico vazio" "0" "$(printf '%s' "$resp" | jget 'd["history"]["count"]')"
@@ -89,6 +89,127 @@ check "all: fila de tokens zerada" "0" "$(printf '%s' "$resp" | jget 'd["state"]
 resp=$(admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
   -d '{"question":"Pos-purga","options":["Sim","Nao"]}')
 check "novo id apos purge all = 1" "1" "$(printf '%s' "$resp" | jget 'd["poll"]["id"]')"
+
+echo "== 7. Exclusao individual de plebiscito =="
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/admin/polls/1")
+check "delete poll sem token -> 401" "401" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/polls/9999")
+check "delete poll inexistente -> 404" "404" "$code"
+
+# Excluir o plebiscito ATIVO remanescente da purga (#1) -> reseta o estado.
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/polls/1")
+check "delete ativo: was_active = True" "True" "$(printf '%s' "$resp" | jget 'd["was_active"]')"
+check "delete ativo: sem plebiscito ativo" "None" "$(printf '%s' "$resp" | jget 'd["state"]["poll"]')"
+check "delete ativo: fila de tokens zerada" "0" \
+  "$(printf '%s' "$resp" | jget 'd["state"]["voting_tokens"]')"
+check "delete ativo: historico vazio" "0" "$(printf '%s' "$resp" | jget 'd["history"]["count"]')"
+
+# Alfa recebe 1 voto; iniciar Beta encerra Alfa (preservando o historico).
+resp=$(admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Alfa","options":["Sim","Nao"]}')
+ALFA_ID=$(printf '%s' "$resp" | jget 'd["poll"]["id"]')
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"D-1"}' >/dev/null
+curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_1"}' >/dev/null
+resp=$(admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Beta","options":["A","B"]}')
+BETA_ID=$(printf '%s' "$resp" | jget 'd["poll"]["id"]')
+
+# Excluir Alfa (encerrado, com 1 voto).
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/polls/$ALFA_ID")
+check "delete encerrado: was_active = False" "False" "$(printf '%s' "$resp" | jget 'd["was_active"]')"
+check "delete encerrado: removeu 1 voto" "1" "$(printf '%s' "$resp" | jget 'd["removed"]["votes"]')"
+check "delete encerrado: historico mantem 1" "1" "$(printf '%s' "$resp" | jget 'd["history"]["count"]')"
+check "delete encerrado: sobrou Beta ativo" "True" \
+  "$(printf '%s' "$resp" | jget 'd["history"]["elections"][0]["active"]')"
+
+# Excluir o plebiscito ATIVO (Beta).
+resp=$(curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/polls/$BETA_ID")
+check "delete ativo Beta: was_active = True" "True" "$(printf '%s' "$resp" | jget 'd["was_active"]')"
+check "delete ativo Beta: historico vazio" "0" "$(printf '%s' "$resp" | jget 'd["history"]["count"]')"
+
+echo "== 8. Limite de fila do check-in (Alerta Amarelo) =="
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/settings/queue-threshold")
+check "queue-threshold sem token -> 401" "401" "$code"
+resp=$(admin "$BASE/api/admin/settings/queue-threshold")
+check "limite padrao = 5" "5" "$(printf '%s' "$resp" | jget 'd["queue_warning_threshold"]')"
+resp=$(admin -X POST "$BASE/api/admin/settings/queue-threshold" \
+  -H 'Content-Type: application/json' -d '{"threshold":3}')
+check "atualiza limite para 3" "3" "$(printf '%s' "$resp" | jget 'd["queue_warning_threshold"]')"
+check "estado reflete o limite" "3" \
+  "$(printf '%s' "$resp" | jget 'd["state"]["queue_warning_threshold"]')"
+# A API de estado do check-in tambem expoe o limite (usada pela tela /checkin).
+resp=$(curl -s "$BASE/api/booth/status")
+check "check-in state expoe o limite" "3" \
+  "$(printf '%s' "$resp" | jget 'd["queue_warning_threshold"]')"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"threshold":0}' \
+  "$BASE/api/admin/settings/queue-threshold")
+check "limite invalido (0) -> 400" "400" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"threshold":"abc"}' \
+  "$BASE/api/admin/settings/queue-threshold")
+check "limite nao numerico -> 400" "400" "$code"
+
+echo "== 9. Backup do banco (download 1 clique) =="
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/backup/download")
+check "backup sem token -> 401" "401" "$code"
+BK="/tmp/votacao_backup_test_$$.db"
+code=$(curl -s -o "$BK" -w '%{http_code}' -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/backup/download")
+check "backup com token -> 200" "200" "$code"
+grep -q 'SQLite format 3' "$BK"
+check "arquivo e um SQLite valido" "0" "$?"
+disp=$(curl -s -o /dev/null -D - -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/backup/download" | tr -d '\r' | grep -ic 'attachment.*votacao_backup_')
+check "resposta sugere nome votacao_backup_*.db" "1" "$disp"
+
+echo "== 10. Restauracao do banco a partir de backup =="
+# Cria um plebiscito com 1 check-in + 1 voto e tira um snapshot (.db).
+admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Pre-backup","options":["Sim","Nao"]}' >/dev/null
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"BK-1"}' >/dev/null
+curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_1"}' >/dev/null
+BK2="/tmp/votacao_backup_snap_$$.db"
+curl -s -o "$BK2" -H "X-Device-Token: $TOKEN" "$BASE/api/admin/backup/download"
+
+# Restore sem arquivo / com arquivo invalido -> 400.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/backup/restore")
+check "restore sem arquivo -> 400" "400" "$code"
+echo "nao sou um banco" > "/tmp/votacao_bad_$$.db"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  -F "file=@/tmp/votacao_bad_$$.db" "$BASE/api/admin/backup/restore")
+check "restore arquivo invalido -> 400" "400" "$code"
+
+# Purga tudo para provar que o restauro traz os dados de volta.
+curl -s -X DELETE -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/db/purge?confirm=1&scope=all&secondary=$TOKEN" >/dev/null
+resp=$(admin "$BASE/api/admin/history")
+check "apos purga, historico vazio" "0" "$(printf '%s' "$resp" | jget 'd["count"]')"
+
+# Restaura o snapshot -> o plebiscito e o voto voltam; fila volatil zerada.
+resp=$(curl -s -X POST -H "X-Device-Token: $TOKEN" \
+  -F "file=@$BK2" "$BASE/api/admin/backup/restore")
+check "restore ok = True" "True" "$(printf '%s' "$resp" | jget 'd["ok"]')"
+check "restore traz o historico (1)" "1" "$(printf '%s' "$resp" | jget 'd["history"]["count"]')"
+check "restore preserva o voto" "1" \
+  "$(printf '%s' "$resp" | jget 'd["history"]["elections"][0]["total_votes"]')"
+check "restore zera a fila de tokens" "0" \
+  "$(printf '%s' "$resp" | jget 'd["state"]["voting_tokens"]')"
+
+echo "== 11. Purga exige verificacao secundaria =="
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/db/purge?confirm=1&scope=all")
+check "purge sem secundaria -> 403" "403" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/db/purge?confirm=1&scope=all&secondary=errado")
+check "purge com secundaria errada -> 403" "403" "$code"
+# Endpoint alias /api/admin/purge (POST) com a secundaria correta.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"confirm":true,"scope":"all"}' \
+  "$BASE/api/admin/purge?secondary=$TOKEN")
+check "POST /api/admin/purge com secundaria -> 200" "200" "$code"
 
 echo
 echo "RESULTADO: $pass passaram, $fail falharam"

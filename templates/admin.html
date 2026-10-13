@@ -91,6 +91,19 @@
             <div class="hint" id="cur-meta"></div>
           </div>
         </div>
+
+        <!-- ===== Configurações do sistema ===== -->
+        <div class="card mt-22">
+          <h3>⚙️ Configurações do Check-in</h3>
+          <label class="field" for="queue-threshold">Limite de Fila do Check-in (Alerta Amarelo)</label>
+          <div class="option-row">
+            <input type="number" id="queue-threshold" min="1" max="9999" step="1" placeholder="5" />
+            <button class="btn primary" id="queue-threshold-save">Salvar</button>
+          </div>
+          <div class="hint">Quando a fila de check-ins aguardando cabine atingir este número,
+            a tela <b>/checkin</b> passa a exibir o <b>alerta amarelo</b> (“fila cheia”) e toca um
+            bipe, orientando o operador a pausar a leitura dos crachás. Padrão: <b>5</b>.</div>
+        </div>
       </section>
 
       <!-- ===== VIEW: Banco de Dados & Histórico ===== -->
@@ -108,17 +121,38 @@
             <div class="muted">Carregue o histórico para visualizar os plebiscitos registrados.</div>
           </div>
 
+          <div class="backup-zone">
+            <h4>📦 Backup &amp; Restauração do Banco</h4>
+            <p class="hint flush">
+              Baixe uma cópia <b>consistente</b> do banco (1 clique, arquivo <b>.db</b>) ou
+              restaure um backup gerado anteriormente. O restauro <b>substitui todos os
+              dados atuais</b> e reinicia o estado das cabines.
+            </p>
+            <div class="actions-bar flush">
+              <button class="btn primary small" id="backup-download">📥 Baixar Backup (.db)</button>
+            </div>
+            <label class="field" for="backup-file">Restaurar a partir de um arquivo</label>
+            <div class="option-row">
+              <input type="file" id="backup-file" accept=".db,application/octet-stream" />
+              <button class="btn danger small" id="backup-restore">📤 Restaurar Banco</button>
+            </div>
+          </div>
+
           <div class="danger-zone">
             <h4>⚠️ Gerenciamento do Banco</h4>
             <p class="hint flush">
               As operações abaixo removem dados de forma <b>permanente</b>. Use para limpar
-              registros de <b>teste</b> antes de uma votação oficial.
+              registros de <b>teste</b> antes de uma votação oficial. A purga exige
+              <b>verificação secundária</b> (Device Token ou PIN de purga).
             </p>
             <label class="field" for="purge-scope">O que remover</label>
             <select id="purge-scope">
               <option value="all">Tudo: plebiscitos + votos + check-ins (banco zerado)</option>
               <option value="logs">Somente votos e check-ins (mantém os plebiscitos)</option>
             </select>
+            <label class="field" for="purge-secondary">Verificação secundária (Device Token ou PIN)</label>
+            <input type="password" id="purge-secondary" placeholder="Token/PIN secundário"
+                   autocomplete="off" />
             <label class="field" for="purge-confirm">Digite <b>PURGE</b> para confirmar</label>
             <div class="option-row">
               <input type="text" id="purge-confirm" placeholder="PURGE" autocomplete="off" />
@@ -176,14 +210,43 @@
         <div class="card">
           <h3>🧾 Relatórios &amp; Atas</h3>
           <p class="muted relaxed">
-            Gere a <b>Ata de Fechamento</b> (Relatório Oficial) do plebiscito ativo ou
-            encerrado. O documento abre em formato <b>A4</b>, pronto para impressão ou
-            <b>Salvar como PDF</b> (inclui bloco de assinaturas da Comissão Eleitoral).
+            Escolha o documento a gerar. Todos abrem em formato <b>A4</b>, prontos
+            para <b>impressão</b> ou <b>Salvar como PDF</b>.
           </p>
-          <div class="actions-bar">
-            <button class="btn report" id="report-btn"
-                    title="Abre a Ata de Fechamento em A4 (Salvar como PDF)">🧾 Gerar Relatório / Ata de Fechamento</button>
+          <div class="report-grid">
+            <div class="report-opt">
+              <div class="report-opt-ico">📜</div>
+              <div class="report-opt-body">
+                <div class="report-opt-title">Ata Oficial de Fechamento</div>
+                <div class="report-opt-desc">Plebiscito ativo ou o último encerrado, com o
+                  resultado consolidado e o bloco de assinaturas da Comissão Eleitoral.</div>
+              </div>
+              <button class="btn report" id="report-ata-btn"
+                      title="Abre a Ata de Fechamento em A4 (Salvar como PDF)">Gerar</button>
+            </div>
+            <div class="report-opt">
+              <div class="report-opt-ico">📊</div>
+              <div class="report-opt-body">
+                <div class="report-opt-title">Relatório Geral de Histórico</div>
+                <div class="report-opt-desc">Resumo de todos os plebiscitos concluídos, com
+                  comparecimento, votos por opção e totais gerais.</div>
+              </div>
+              <button class="btn report" id="report-history-btn"
+                      title="Abre o Relatório Geral de Histórico em A4 (Salvar como PDF)">Gerar</button>
+            </div>
+            <div class="report-opt">
+              <div class="report-opt-ico">🖥️</div>
+              <div class="report-opt-body">
+                <div class="report-opt-title">Relatório de Auditoria de Cabines</div>
+                <div class="report-opt-desc">Cabines ativas, endereços IP, último heartbeat e
+                  histórico de pareamento.</div>
+              </div>
+              <button class="btn report" id="report-booths-btn"
+                      title="Abre o Relatório de Auditoria de Cabines em A4 (Salvar como PDF)">Gerar</button>
+            </div>
           </div>
+          <div class="hint">Dica: na janela do relatório use <b>Imprimir → Salvar como PDF</b>
+            e selecione o tamanho de papel <b>A4</b>.</div>
         </div>
       </section>
 

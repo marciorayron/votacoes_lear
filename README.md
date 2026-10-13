@@ -17,6 +17,8 @@ onde está conectado o **leitor NFC USB** (emulador de teclado/HID). Cabines
 | `/painel-tv`  | Painel público de resultados (TV) com gráfico de barras.              |
 | `/admin`      | Painel administrativo — cria/reseta/encerra plebiscitos dinâmicos.    |
 | `/admin/relatorio` | **Ata de Fechamento / Relatório Oficial** em A4 (imprimir/Salvar PDF). |
+| `/admin/relatorio/historico` | **Relatório Geral de Histórico** em A4 (todos os plebiscitos e totais). |
+| `/admin/relatorio/cabines` | **Relatório de Auditoria de Cabines** em A4 (IP, status, heartbeat). |
 | `/`           | Hub / Início — índice com links para todas as telas e status em tempo real. |
 
 ## 2. Instalação
@@ -104,8 +106,10 @@ memória do processo:
 - a tabela `polls` guarda a **pergunta**, as **opções** (JSON) e o **`status`**
   (`open`/`closed`) do plebiscito, com `created_at`/`closed_at`;
 - a tabela `settings` (chave/valor) guarda **`active_poll_id`** (qual poll está
-  ativa), **`voting_tokens`** (tamanho atual da fila de votação) e
-  **`booth_pairing_pin`** (PIN de pareamento de novas cabines, quando ativo);
+  ativa), **`voting_tokens`** (tamanho atual da fila de votação),
+  **`booth_pairing_pin`** (PIN de pareamento de novas cabines, quando ativo) e
+  **`queue_warning_threshold`** (limite de fila que dispara o Alerta Amarelo no
+  check-in; padrão **5**, ajustável no painel);
 - a tabela `booths` guarda as **cabines** (número amigável, rótulo, último
   *heartbeat*, reserva atual, **IP do cliente** e **token de pareamento**),
   então a numeração e o pareamento sobrevivem a reinícios.
@@ -129,6 +133,11 @@ token, apenas uma é aceita.
    a qualquer cabine disponível."*). Um **bipe agudo** confirma a liberação; um
    **zumbido grave** sinaliza erro (crachá já votou, etc.).
    * Cooldown de 2s no front-end + PK no banco = **nenhum voto duplo**.
+   * **Alerta de Fila Cheia:** quando a fila atinge o
+     **`queue_warning_threshold`** (padrão 5, ajustável em `/admin`), a tela
+     passa a exibir borda/faixa **âmbar** e o banner *“⚠️ FILA CHEIA (X
+     aguardando cabine) — Aguarde liberação das cabines”*, com um **bipe suave**,
+     orientando o operador a pausar a leitura até as cabines liberarem.
 3. **Cabines** (`/cabine`) → cada kiosk registra-se (`/api/booth/register`) e
    envia *heartbeat* a cada 5s, recebendo um número amigável estável
    (**Cabine 01**, **Cabine 02**, …). Se o **pareamento** estiver ativo (PIN
@@ -142,6 +151,19 @@ token, apenas uma é aceita.
 4. **Painel TV** (`/painel-tv`) → consulta `/api/results` periodicamente e
    exibe o gráfico de barras com **atraso controlado** (`RESULTS_DELAY_SECONDS`),
    garantindo sigilo do voto e transparência.
+5. **Relatórios** (`/admin` → *Relatórios & Atas*) → gera em **A4** a *Ata de
+   Fechamento*, o *Relatório Geral de Histórico* e o *Relatório de Auditoria de
+   Cabines* (Imprimir/Salvar PDF). No **Histórico do banco**, cada plebiscito
+   exibe barras de percentual, pode ser **exportado em CSV** (planilha) e
+   **excluído individualmente** — excluir o plebiscito ativo reinicia o estado
+   da votação.
+6. **Backup & Restauração** (`/admin` → *Banco de Dados & Histórico*) → **Baixar
+   Backup (.db)** gera, com a API de backup do SQLite, uma cópia **consistente**
+   (`votacao_backup_AAAAAMMDD_HHMMSS.db`); **Restaurar Banco** aceita um `.db`
+   (validado quanto a integridade e ao schema), **substitui** o banco ativo e
+   reinicia o estado volátil (cabines ociosas, fila zerada). A **Purga** exige,
+   além de digitar `PURGE`, uma **verificação secundária** (Device Token ou PIN
+   de purga) — sem ela a requisição é recusada com **403**.
 
 
 ## 5. API
@@ -150,7 +172,7 @@ token, apenas uma é aceita.
 | Método | Rota                    | Descrição                                            |
 |--------|-------------------------|------------------------------------------------------|
 | POST   | `/api/checkin`          | `{badge_id}` → valida, incrementa token e aloca cabine. |
-| GET    | `/api/booth/status`     | Tokens e estado do plebiscito. Com `?booth_id=…`, informa `assigned`/`booth`. |
+| GET    | `/api/booth/status`     | Tokens, estado do plebiscito e `queue_warning_threshold`. Com `?booth_id=…`, informa `assigned`/`booth`. |
 | POST   | `/api/booth/register`   | `{booth_id, pairing_pin?, pairing_token?}` → registra/pareia a cabine e devolve número/rótulo (+ `pairing_token` quando emitido). |
 | POST   | `/api/booth/heartbeat`  | `{booth_id, status?}` → mantém `online`, grava o IP do cliente; `status:"idle"` libera a reserva. |
 | GET    | `/api/booths`           | Lista das cabines (online / ociosa / alocada).       |
@@ -169,6 +191,16 @@ token, apenas uma é aceita.
 | POST   | `/api/admin/tokens`    | `{count}` ou `{delta}` → ajuste manual da fila.  |
 | POST   | `/api/admin/pairing`   | `{generate}` / `{pin}` / `{clear}` → gera, define ou desativa o PIN de pareamento. |
 | DELETE | `/api/admin/booths/<id>` | Remove/desconecta (deregistra) uma cabine.      |
+| GET    | `/api/admin/history`   | Histórico de todos os plebiscitos (votos, percentuais, votantes). |
+| GET    | `/api/admin/report`    | Relatório oficial (JSON) do plebiscito ativo/último encerrado. |
+| GET/POST | `/api/admin/settings/queue-threshold` | Lê (`GET`) ou define (`POST {threshold}`) o **limite de fila** que dispara o Alerta Amarelo no check-in. |
+| GET    | `/api/admin/backup/download` | Baixa um backup **consistente** do banco (`votacao_backup_AAAAAMMDD_HHMMSS.db`). |
+| POST   | `/api/admin/backup/restore` | `multipart file` → valida e **restaura** o banco; reinicia o estado volátil. |
+| POST   | `/api/admin/purge` (alias `DELETE /api/admin/db/purge`) | `{confirm, scope, secondary}` → purga `logs` ou zera o banco (`all`). Exige **verificação secundária** (Device Token/PIN); falha → **403**. |
+| DELETE | `/api/admin/polls/<id>` | Exclui **um** plebiscito e seus votos; se for o ativo, reinicia o estado. |
+
+> As páginas HTML de relatório (`/admin/relatorio*`) aceitam o Device Token tanto
+> pelo header `X-Device-Token` quanto por `?token=…` (usado nos links do painel).
 
 Exemplo:
 
@@ -318,10 +350,15 @@ momento, **124 verificações** passam (67 + 10 + 24 + 23).
   reinício.
 - `test_history.sh` — **histórico de plebiscitos** (`/api/admin/history`: exige
   token, lista do mais recente ao mais antigo, marca o plebiscito ativo e agrega
-  votos/votantes/percentuais por opção) e a **purga controlada do banco**
-  (`DELETE /api/admin/db/purge`: exige `confirm=1` e um `scope` válido; o escopo
-  `logs` zera votos preservando os plebiscitos, e o escopo `all` zera tudo e
-  reinicia a numeração dos plebiscitos).
+  votos/votantes/percentuais por opção), a **exclusão individual** de plebiscitos
+  e a **purga controlada do banco** (`DELETE /api/admin/db/purge` ou
+  `POST /api/admin/purge`: exige `confirm=1`, um `scope` válido e a
+  **verificação secundária** — sem ela retorna **403**; `logs` zera votos
+  preservando os plebiscitos e `all` zera tudo). Cobre ainda o **limite de fila
+  do check-in** (`/api/admin/settings/queue-threshold`, refletido em
+  `/api/booth/status`) e o **backup/restauração** (`/api/admin/backup/download`
+  gera um `.db` válido; `/api/admin/backup/restore` rejeita arquivo ausente ou
+  inválido e, após uma purga total, recompõe o histórico).
 
 ## 9. Estrutura
 

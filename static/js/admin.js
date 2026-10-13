@@ -13,6 +13,7 @@ const toastEl       = document.getElementById('toast');
 let token = '';
 let refreshTimer = null;
 let historyLoaded = false;
+let lastHistory = null;   // ultimo payload de /api/admin/history (para CSV)
 
 // ------------------ Utilidades ------------------
 function toast(message, kind) {
@@ -56,6 +57,36 @@ function handleUnauthorized() {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Formata um timestamp ISO em data/hora local brasileira (DD/MM/YYYY às HH:mm).
+function fmtDateTimeBR(iso) {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return String(iso);
+  const d = new Date(t);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+    ' às ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// Escapa um campo para CSV (RFC 4180) quando contiver separador, aspas ou quebra.
+function csvEscape(value) {
+  const s = (value === null || value === undefined) ? '' : String(value);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Dispara o download de um arquivo gerado no cliente (CSV).
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ------------------ Opções dinamicas ------------------
@@ -240,6 +271,7 @@ async function loadHistory(showError) {
 }
 
 function renderHistory(data) {
+  lastHistory = data || null;
   const list = document.getElementById('history-list');
   const elections = (data && data.elections) || [];
   const count = (data && data.count != null) ? data.count : elections.length;
@@ -259,27 +291,100 @@ function renderHistory(data) {
       ? '<span class="badge b-open">ATIVO</span>'
       : '<span class="badge b-' + (e.status === 'closed' ? 'closed' : 'open') + '">' +
         escapeHtml(String(e.status || '').toUpperCase()) + '</span>';
-    const opts = (e.options || []).map(o =>
-      '<span class="hist-opt">' + escapeHtml(o.label) + ' <b>' + o.count + '</b>' +
-      ' <span class="muted">(' + (o.percent ?? 0) + '%)</span></span>').join('');
-    const meta = 'ID #' + e.id + ' · ' + (e.created_at || '–') +
-      (e.closed_at ? ' → ' + e.closed_at : '') +
+
+    // Detalhamento por opcao com barra de progresso (percentual apurado).
+    const opts = (e.options || []).map(o => {
+      const pct = Math.max(0, Math.min(100, Number(o.percent) || 0));
+      return '<div class="hist-opt">' +
+        '<div class="hist-opt-top"><span>' + escapeHtml(o.label) + '</span>' +
+        '<span><b>' + (o.count ?? 0) + '</b> ' +
+        '<span class="muted">(' + pct + '%)</span></span></div>' +
+        '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    }).join('');
+
+    // Datas ISO -> formato local brasileiro (DD/MM/YYYY às HH:mm).
+    const meta = 'ID #' + e.id + ' · ' + fmtDateTimeBR(e.created_at) +
+      (e.closed_at ? ' → ' + fmtDateTimeBR(e.closed_at) : '') +
       ' · Votos: ' + (e.total_votes ?? 0) +
       (e.voters != null ? ' · Votantes: ' + e.voters : '');
+
     item.innerHTML =
       '<div class="hist-top"><div class="hist-q">' + escapeHtml(e.question) + '</div>' +
       badge + '</div>' +
       '<div class="hist-meta muted">' + escapeHtml(meta) + '</div>' +
-      '<div class="hist-opts">' + (opts || '<span class="muted">sem opções</span>') + '</div>';
+      '<div class="hist-opts">' + (opts || '<span class="muted">sem opções</span>') + '</div>' +
+      '<div class="hist-actions">' +
+        '<button class="btn ghost small" data-export-csv="' + e.id + '" ' +
+          'title="Baixar os resultados deste plebiscito em CSV">📥 Exportar CSV</button>' +
+        '<button class="btn danger small" data-del-poll="' + e.id + '" ' +
+          'title="Excluir definitivamente este plebiscito e seus votos">🗑️ Excluir</button>' +
+      '</div>';
     list.appendChild(item);
+
+    const csvBtn = item.querySelector('[data-export-csv]');
+    if (csvBtn) csvBtn.addEventListener('click', () => exportPollCsv(e.id));
+    const delBtn = item.querySelector('[data-del-poll]');
+    if (delBtn) delBtn.addEventListener('click', () => deletePoll(e.id));
   });
 }
+
+// Exporta um plebiscito (votos por opcao + percentuais) em CSV.
+function exportPollCsv(pollId) {
+  const elections = (lastHistory && lastHistory.elections) || [];
+  const e = elections.find(x => String(x.id) === String(pollId));
+  if (!e) { toast('Plebiscito não encontrado no histórico.', 'err'); return; }
+
+  const rows = ['Plebiscito,Pergunta,Opção,Votos,Percentual'];
+  (e.options || []).forEach(o => {
+    const pct = Math.max(0, Math.min(100, Number(o.percent) || 0));
+    rows.push([
+      '#' + e.id,
+      csvEscape(e.question),
+      csvEscape(o.label),
+      String(o.count ?? 0),
+      pct.toFixed(1)
+    ].join(','));
+  });
+  rows.push(['#' + e.id, csvEscape(e.question), csvEscape('TOTAL'),
+             String(e.total_votes ?? 0), (e.total_votes ? '100.0' : '0.0')].join(','));
+
+  // BOM para o Excel reconhecer UTF-8 (acentos corretos).
+  const csv = '\ufeff' + rows.join('\r\n') + '\r\n';
+  downloadFile('plebiscito_' + e.id + '.csv', csv, 'text/csv;charset=utf-8');
+  toast('CSV do plebiscito #' + e.id + ' gerado.', 'ok');
+}
+
+// Exclui um plebiscito individual (e seus votos) de forma irreversivel.
+async function deletePoll(pollId) {
+  if (!pollId) return;
+  if (!confirm('Excluir o plebiscito #' + pollId +
+               ' e todos os seus votos? Esta ação é irreversível.')) return;
+  try {
+    const { ok, data } = await api(
+      '/api/admin/polls/' + encodeURIComponent(pollId), 'DELETE');
+    if (!ok || data.ok === false) { toast('Falha ao excluir o plebiscito.', 'err'); return; }
+    if (data.state) renderState(data.state);
+    if (data.history) renderHistory(data.history);
+    toast('Plebiscito #' + pollId + ' excluído.' +
+          (data.was_active ? ' O plebiscito ativo foi reiniciado.' : ''), 'ok');
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao excluir o plebiscito.', 'err');
+  }
+}
+
 
 // ------------------ Purga do banco ------------------
 async function purgeDatabase() {
   const scope = document.getElementById('purge-scope').value;
   const typed = (document.getElementById('purge-confirm').value || '').trim().toUpperCase();
+  const secondary = (document.getElementById('purge-secondary').value || '').trim();
   if (typed !== 'PURGE') { toast('Digite PURGE para confirmar.', 'err'); return; }
+  if (!secondary) {
+    toast('Informe o Device Token ou o PIN de verificação secundária.', 'err');
+    return;
+  }
   if (!confirm('CONFIRMAÇÃO FINAL: purgar dados (' + scope +
                ')? Esta ação é irreversível.')) return;
 
@@ -287,14 +392,18 @@ async function purgeDatabase() {
   btn.disabled = true;
   try {
     const url = '/api/admin/db/purge?confirm=1&scope=' + encodeURIComponent(scope);
-    const { ok, data } = await api(url, 'DELETE');
-    if (!ok || data.ok === false) { toast('Falha ao purgar o banco.', 'err'); return; }
+    const { ok, data } = await api(url, 'DELETE', { secondary: secondary });
+    if (!ok || data.ok === false) {
+      toast(data.detail || 'Falha ao purgar o banco.', 'err');
+      return;
+    }
     if (data.state) renderState(data.state);
     if (data.history) renderHistory(data.history);
     const r = data.removed || {};
     toast('Purgado: ' + (r.votes || 0) + ' voto(s), ' + (r.voters || 0) +
           ' check-in(s), ' + (r.polls || 0) + ' plebiscito(s).', 'ok');
     document.getElementById('purge-confirm').value = '';
+    document.getElementById('purge-secondary').value = '';
   } catch (err) {
     if (err.message === 'unauthorized') return;
     toast('Falha ao purgar o banco.', 'err');
@@ -302,6 +411,106 @@ async function purgeDatabase() {
     btn.disabled = false;
   }
 }
+
+// ------------------ Limite de fila do check-in ------------------
+async function saveQueueThreshold() {
+  const input = document.getElementById('queue-threshold');
+  const value = parseInt((input.value || '').trim(), 10);
+  if (!Number.isFinite(value) || value < 1) {
+    toast('Informe um limite válido (número >= 1).', 'err');
+    return;
+  }
+  const btn = document.getElementById('queue-threshold-save');
+  btn.disabled = true;
+  try {
+    const { ok, data } = await api('/api/admin/settings/queue-threshold', 'POST',
+                                   { threshold: value });
+    if (!ok || data.ok === false) {
+      toast(data.detail || 'Falha ao salvar o limite.', 'err');
+      return;
+    }
+    if (data.state) renderState(data.state);
+    else if (data.queue_warning_threshold != null) input.value = data.queue_warning_threshold;
+    toast('Limite de fila definido em ' + data.queue_warning_threshold + '.', 'ok');
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao salvar o limite.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ------------------ Backup / Restauracao do banco ------------------
+// Baixa um backup consistente (.db) gerado pelo servidor (1 clique).
+async function downloadBackup() {
+  const btn = document.getElementById('backup-download');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/backup/download', {
+      headers: { 'X-Device-Token': token }, cache: 'no-store'
+    });
+    if (res.status === 401) { handleUnauthorized(); return; }
+    if (!res.ok) { toast('Falha ao gerar o backup.', 'err'); return; }
+
+    const blob = await res.blob();
+    let filename = 'votacao_backup.db';
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i);
+    if (m && m[1]) filename = decodeURIComponent(m[1]);
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Backup gerado: ' + filename, 'ok');
+  } catch (err) {
+    toast('Falha ao gerar o backup.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Restaura o banco a partir de um arquivo .db escolhido pelo administrador.
+async function restoreBackup() {
+  const input = document.getElementById('backup-file');
+  if (!input || !input.files || !input.files.length) {
+    toast('Selecione um arquivo de backup (.db).', 'err');
+    return;
+  }
+  const file = input.files[0];
+  if (!confirm('Restaurar o banco a partir de "' + file.name + '"?\n\n' +
+               'Todos os dados atuais (plebiscitos, votos e check-ins) serão SUBSTITUÍDOS.')) return;
+  if (!confirm('CONFIRMAÇÃO FINAL: o banco atual será sobrescrito. Continuar?')) return;
+
+  const btn = document.getElementById('backup-restore');
+  btn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/admin/backup/restore', {
+      method: 'POST', headers: { 'X-Device-Token': token }, body: fd, cache: 'no-store'
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { handleUnauthorized(); return; }
+    if (!res.ok || data.ok === false) {
+      toast(data.detail || data.error || 'Falha ao restaurar o banco.', 'err');
+      return;
+    }
+    if (data.state) renderState(data.state);
+    if (data.history) renderHistory(data.history);
+    input.value = '';
+    toast('Banco de dados restaurado com sucesso.', 'ok');
+  } catch (err) {
+    toast('Falha ao restaurar o banco.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ------------------ Ações ------------------
 async function startPoll() {
   const question = document.getElementById('question').value.trim();
@@ -348,10 +557,18 @@ async function closePoll() {
   }
 }
 
-function openReport() {
+// Rotas das paginas de relatorio (A4). Escolhidas na view "Relatórios & Atas".
+const REPORT_PAGES = {
+  ata:     '/admin/relatorio',
+  history: '/admin/relatorio/historico',
+  booths:  '/admin/relatorio/cabines'
+};
+
+function openReport(kind) {
   if (!token) { toast('Sessão bloqueada.', 'err'); return; }
-  // Abre a Ata de Fechamento (A4) em nova aba; salvar como PDF via impressao.
-  window.open('/admin/relatorio?token=' + encodeURIComponent(token), '_blank');
+  // Abre a pagina de relatorio (A4) em nova aba; salvar como PDF via impressao.
+  const path = REPORT_PAGES[kind] || REPORT_PAGES.ata;
+  window.open(path + '?token=' + encodeURIComponent(token), '_blank');
 }
 // ------------------ Wiring ------------------
 document.getElementById('unlock-btn').addEventListener('click', unlock);
@@ -367,7 +584,9 @@ document.getElementById('preset-yesno').addEventListener('click', setPresetYesNo
 document.getElementById('start-btn').addEventListener('click', startPoll);
 document.getElementById('reset-btn').addEventListener('click', resetPoll);
 document.getElementById('close-btn').addEventListener('click', closePoll);
-document.getElementById('report-btn').addEventListener('click', openReport);
+document.getElementById('report-ata-btn').addEventListener('click', () => openReport('ata'));
+document.getElementById('report-history-btn').addEventListener('click', () => openReport('history'));
+document.getElementById('report-booths-btn').addEventListener('click', () => openReport('booths'));
 document.getElementById('pairing-generate').addEventListener('click', generatePairingPin);
 document.getElementById('pairing-copy').addEventListener('click', copyPairingPin);
 document.getElementById('pairing-clear').addEventListener('click', clearPairingPin);
@@ -381,6 +600,11 @@ document.querySelectorAll('.nav-item[data-view]').forEach(btn =>
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 document.getElementById('history-refresh').addEventListener('click', () => loadHistory(true));
 document.getElementById('purge-btn').addEventListener('click', purgeDatabase);
+document.getElementById('queue-threshold-save').addEventListener('click', saveQueueThreshold);
+document.getElementById('queue-threshold').addEventListener('keydown',
+  e => { if (e.key === 'Enter') saveQueueThreshold(); });
+document.getElementById('backup-download').addEventListener('click', downloadBackup);
+document.getElementById('backup-restore').addEventListener('click', restoreBackup);
 
 // ------------------ Init ------------------
 (function init() {
@@ -473,6 +697,14 @@ function renderState(s) {
   renderPairing(s.pairing_pin || '');
   setText('cfg-delay', s.results_delay ?? '–');
   setText('cfg-cooldown', s.cooldown ?? '–');
+
+  // Limite de fila do check-in (Alerta Amarelo) - nao sobrescreve o campo
+  // enquanto o administrador estiver editando-o.
+  const QtEl = document.getElementById('queue-threshold');
+  if (QtEl && s.queue_warning_threshold != null &&
+      document.activeElement !== QtEl) {
+    QtEl.value = s.queue_warning_threshold;
+  }
 
   renderBooths(s.booths || []);
 }
