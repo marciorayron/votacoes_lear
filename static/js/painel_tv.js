@@ -9,6 +9,8 @@ const pendingEl  = document.getElementById('pending');
 const tokensEl   = document.getElementById('tokens');
 const updatedEl  = document.getElementById('updated');
 const delayEl    = document.getElementById('delay');
+const delayModeEl = document.getElementById('delay-mode');
+const networkEl  = document.getElementById('network-mode');
 const liveDot    = document.getElementById('live-dot');
 const liveText   = document.getElementById('live-text');
 const canvas     = document.getElementById('chart');
@@ -138,6 +140,11 @@ async function refresh() {
     const d = await r.json();
 
     if (d.results_delay !== undefined) delayEl.textContent = d.results_delay;
+    if (delayModeEl) {
+      delayModeEl.textContent = d.results_delay_minutes
+        ? '(janelas de ' + d.results_delay_minutes + ' min)' : '';
+    }
+    if (networkEl && d.network_isolation) networkEl.textContent = d.network_isolation;
 
     if (!d.question || d.status === 'no_poll') {
       questionEl.textContent = 'Aguardando plebiscito…';

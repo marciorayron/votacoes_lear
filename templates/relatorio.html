@@ -108,6 +108,143 @@
       </div>
     </div>
 
+    <!-- ============ Regras de negócio, parâmetros e declaração de sigilo ============ -->
+    <h2 class="section">📜 Regras de Negócio, Parâmetros e Declaração de Sigilo</h2>
+    <table class="meta">
+      <tr>
+        <td class="label">Cooldown de check-in (anti duplo-credenciamento)</td>
+        <td>{{ '%.1f' | format(report.checkin_cooldown) }} s por cabine</td>
+      </tr>
+      <tr>
+        <td class="label">Política de token de voto</td>
+        <td>1 check-in = 1 token de voto, de uso único e não reutilizável</td>
+      </tr>
+      <tr>
+        <td class="label">Atraso controlado de divulgação (painel TV)</td>
+        <td>{{ report.results_delay }} s{% if report.results_delay_minutes %}
+          — janelas de divulgação a cada <strong>{{ report.results_delay_minutes }} min</strong>
+          {% else %} — divulgação contínua{% endif %}</td>
+      </tr>
+      <tr>
+        <td class="label">Isolamento de rede (modo de operação)</td>
+        <td>{{ report.network_isolation }}</td>
+      </tr>
+      <tr>
+        <td class="label">Pareamento de cabines por PIN durante a sessão</td>
+        <td>{{ 'ATIVO' if report.pairing_enabled else 'DESATIVADO' }}</td>
+      </tr>
+      <tr>
+        <td class="label">Check-ins (votantes únicos)</td>
+        <td>{{ report.checkins_vs_votes.checkins }}</td>
+      </tr>
+      <tr>
+        <td class="label">Votos apurados</td>
+        <td>{{ report.checkins_vs_votes.votes }}</td>
+      </tr>
+      <tr>
+        <td class="label">Divergência check-ins × votos</td>
+        <td>
+          {{ report.checkins_vs_votes.variance }}
+          {% if report.checkins_vs_votes.variance == 0 %}
+          <span class="ok-tag">OK — consistente</span>
+          {% else %}
+          <span class="warn-tag">Atenção — credenciados que não votaram</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <!-- ================= Reconciliação de fechamento ================= -->
+    <h3 class="sub-section">🧮 Reconciliação de Fechamento</h3>
+    <div class="integrity">
+      <p>A conciliação comprova que <strong>toda credencial emitida no check-in
+        corresponde a um voto apurado ou a um token de voto ainda na fila</strong>,
+        conforme a identidade <code>Check-ins = Votos + Tokens ativos</code>.</p>
+      <table class="meta">
+        <tr>
+          <td class="label">Check-ins (votantes únicos)</td>
+          <td>{{ report.reconciliation.checkins_total }}</td>
+        </tr>
+        <tr>
+          <td class="label">Votos apurados</td>
+          <td>{{ report.reconciliation.votes_cast }}</td>
+        </tr>
+        <tr>
+          <td class="label">Tokens de voto ativos (fila)</td>
+          <td>{{ report.reconciliation.active_tokens }}</td>
+        </tr>
+        <tr>
+          <td class="label">Check-ins esperados (votos + tokens)</td>
+          <td>{{ report.reconciliation.expected_checkins }}</td>
+        </tr>
+        <tr>
+          <td class="label">Diferença</td>
+          <td>
+            {{ report.reconciliation.difference }}
+            {% if report.reconciliation.balanced %}
+            <span class="ok-tag">OK — fechamento conciliado</span>
+            {% else %}
+            <span class="warn-tag">Atenção — divergência de fechamento</span>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3 class="sub-section">🔐 Integridade do banco de dados</h3>
+    <div class="integrity">
+      <p>No encerramento, o sistema calcula um digest <strong>{{ report.integrity.algorithm }}</strong>
+        sobre os metadados do plebiscito e <strong>todos os votos anônimos</strong> na ordem de
+        inserção, gravando-o no banco (selo). A verificação abaixo recalcula o digest e o
+        compara ao selo gravado, detectando qualquer alteração posterior feita fora do sistema.</p>
+      <div class="hash-row">
+        <span class="label">Algoritmo</span><code>{{ report.integrity.algorithm }}</code>
+      </div>
+      <div class="hash-row">
+        <span class="label">Votos incluídos no digest</span><code>{{ report.integrity.votes_hashed }}</code>
+      </div>
+      <div class="hash-row">
+        <span class="label">Selo (digest gravado)</span><code class="hash">{{ report.integrity.hash }}</code>
+      </div>
+      {% if report.integrity.sealed %}
+        {% if report.integrity.valid %}
+      <div class="verdict ok">✔ SELADO E ÍNTEGRO — o digest recalculado confere com o selo. Nenhuma adulteração detectada.</div>
+        {% else %}
+      <div class="verdict bad">✘ ADULTERAÇÃO DETECTADA — o digest recalculado DIVERGE do selo. Os dados foram alterados após o encerramento.</div>
+        {% endif %}
+      {% else %}
+      <div class="verdict pending">⏳ NÃO SELADO — o plebiscito está em andamento; o selo é gravado no encerramento.</div>
+      {% endif %}
+    </div>
+
+    <h3 class="sub-section">🛡️ Schema do banco de dados &amp; Declaração de Anonimato</h3>
+    <div class="disclosure">
+      <p>O sistema foi projetado para que <strong>não exista qualquer vínculo entre o votante
+        e o seu voto</strong>. As tabelas relevantes do banco são:</p>
+      <table class="meta schema">
+        <tr>
+          <td class="label"><code>voters</code> (check-in)</td>
+          <td><code>badge_id (PK), voted_at</code> — registra <em>quem</em> compareceu e
+            <em>quando</em>, e é <strong>limpa no encerramento</strong>. Não possui coluna de voto.</td>
+        </tr>
+        <tr>
+          <td class="label"><code>votes</code> (voto)</td>
+          <td><code>id, poll_id, option_label</code> — <strong>sem</strong> chave estrangeira,
+            <strong>sem</strong> crachá/votante, <strong>sem</strong> carimbo de tempo por voto e
+            <strong>sem</strong> IP de cabine.</td>
+        </tr>
+        <tr>
+          <td class="label">Correlação votante ↔ voto</td>
+          <td><strong>Inexistente</strong>: não há coluna, chave estrangeira ou tabela de junção
+            capaz de associar uma linha de <code>votes</code> a um votante. A reidentificação é
+            matematicamente impossível a partir do banco.</td>
+        </tr>
+      </table>
+      <p class="note">O atraso controlado de divulgação ({{ report.results_delay }} s) é estimado
+        pela contagem de check-ins antigos da tabela <code>voters</code> — nunca por um vínculo
+        voto→votante — de modo que nem a ordem de divulgação permite reidentificar o eleitor.</p>
+    </div>
+
     <div class="statement">
       <p>A Comissão Eleitoral, no uso de suas atribuições e cumprindo o disposto no
         regulamento interno, <strong>declara o resultado do plebiscito</strong>
@@ -120,26 +257,19 @@
     </div>
 
     <div class="signatures">
+      {% for sig in signatories | default([], true) %}
       <div class="sign-line">
         <div class="blank"></div>
-        <div class="role">Representante da Comissão de Fábrica</div>
-        <div class="name">Nome / Matrícula</div>
+        <div class="role">{{ sig.role or 'Assinatura' }}</div>
+        <div class="name">
+          {%- if sig.name -%}
+          {{ sig.name }}{% if sig.doc %} · {{ sig.doc }}{% endif %}
+          {%- else -%}
+          Nome / Matrícula
+          {%- endif -%}
+        </div>
       </div>
-      <div class="sign-line">
-        <div class="blank"></div>
-        <div class="role">Representante Sindical</div>
-        <div class="name">Nome / Matrícula</div>
-      </div>
-      <div class="sign-line">
-        <div class="blank"></div>
-        <div class="role">Membro da Comissão Eleitoral</div>
-        <div class="name">Nome / Matrícula</div>
-      </div>
-      <div class="sign-line">
-        <div class="blank"></div>
-        <div class="role">Presidente da Mesa Apuradora</div>
-        <div class="name">Nome / Matrícula</div>
-      </div>
+      {% endfor %}
     </div>
 
     <footer class="report">

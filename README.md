@@ -74,6 +74,7 @@ python3 app.py
 | `VOTING_DB`                 | `./votacao.db`  | Caminho do banco SQLite (relativo ou absoluto).        |
 | `CHECKIN_COOLDOWN_SECONDS`  | `2`             | Cooldown anti-duplo-swap no check-in.                  |
 | `RESULTS_DELAY_SECONDS`     | `5`             | Atraso controlado dos resultados no painel de TV.      |
+| `NETWORK_MODE`              | `Rede Local / Offline` | Como o isolamento de rede é declarado em `/api/admin/state` e na Ata. |
 | `BOOTH_TIMEOUT_SECONDS`     | `20`            | Sem heartbeat por este tempo, a cabine fica offline.   |
 | `BOOTH_BUSY_SECONDS`        | `45`            | Reserva da cabine após uma liberação de check-in.      |
 | `HOST` / `PORT`             | `0.0.0.0:5000`  | Bind do servidor.                                      |
@@ -93,10 +94,9 @@ Abra o administrador em: `http://SERVIDOR:5000/admin?token=SEU_TOKEN`.
   `sqlite3.OperationalError` cru.
 - No boot, o banner mostra `Banco de dados` e, quando houver substituição,
   `(fallback em uso - VOTING_DB pedido: ...)`.
-
-> Em rede isolada, prefira um disco **gravável**: se o volume inteiro estiver
-> somente-leitura (ex.: ext4 em `emergency_ro` após erro de I/O), o fallback
-> precisa de um diretório gravável para funcionar.
+- Em rede isolada, prefira um disco **gravável**: se o volume inteiro estiver
+  somente-leitura (ex.: ext4 em `emergency_ro` após erro de I/O), o fallback
+  precisa de um diretório gravável para funcionar.
 
 ### Persistência do estado (sobrevive a reboot)
 
@@ -164,6 +164,15 @@ token, apenas uma é aceita.
    reinicia o estado volátil (cabines ociosas, fila zerada). A **Purga** exige,
    além de digitar `PURGE`, uma **verificação secundária** (Device Token ou PIN
    de purga) — sem ela a requisição é recusada com **403**.
+7. **Encerramento** (`/admin`) → **Encerrar** exige o **PIN de encerramento**
+   (gerado junto com o plebiscito e exibido no painel); sem o PIN correto a
+   requisição é recusada com **403** e o plebiscito **continua aberto**. Após o
+   encerramento, o painel mostra a **conciliação** (credenciados = votos +
+   tokens pendentes) e o **isolamento de rede** declarado.
+8. **Fiscalização** (`/admin` → *Inspetor do Banco* e *Auditoria*) → o inspetor
+   consulta as tabelas em **modo somente-leitura** (a tabela `votes` é anônima e
+   pode ser exportada em CSV) e a auditoria lista, do mais recente ao mais
+   antigo, os eventos críticos com o IP do ator (com filtro textual).
 
 
 ## 5. API
@@ -187,7 +196,7 @@ token, apenas uma é aceita.
 | GET    | `/api/admin/state`     | Estado atual (poll, contadores, config).         |
 | POST   | `/api/admin/poll`      | `{question, options:[...]}` → cria e inicia.     |
 | POST   | `/api/admin/reset`     | `{clear_voters}` → zera contadores.              |
-| POST   | `/api/admin/close`     | Encerra o plebiscito ativo.                      |
+| POST   | `/api/admin/close`     | Encerra o plebiscito ativo. Exige o **PIN de encerramento** (`X-Closure-Pin` ou `{closure_pin}`); PIN ausente/errado → **403** (e o plebiscito **continua aberto**). |
 | POST   | `/api/admin/tokens`    | `{count}` ou `{delta}` → ajuste manual da fila.  |
 | POST   | `/api/admin/pairing`   | `{generate}` / `{pin}` / `{clear}` → gera, define ou desativa o PIN de pareamento. |
 | DELETE | `/api/admin/booths/<id>` | Remove/desconecta (deregistra) uma cabine.      |
@@ -198,9 +207,40 @@ token, apenas uma é aceita.
 | POST   | `/api/admin/backup/restore` | `multipart file` → valida e **restaura** o banco; reinicia o estado volátil. |
 | POST   | `/api/admin/purge` (alias `DELETE /api/admin/db/purge`) | `{confirm, scope, secondary}` → purga `logs` ou zera o banco (`all`). Exige **verificação secundária** (Device Token/PIN); falha → **403**. |
 | DELETE | `/api/admin/polls/<id>` | Exclui **um** plebiscito e seus votos; se for o ativo, reinicia o estado. |
+| GET    | `/api/admin/db/inspect` | **Inspetor somente-leitura** do banco: `?table=polls\|voters\|votes\|booths\|settings` (fora da whitelist cai em `polls`). Devolve `columns`, `rows`, `count`, `read_only:true` e, para `votes`, `anonymous:true` (só `id`, `poll_id`, `option_label` — sem vínculo com o votante). |
+| GET    | `/api/admin/audit`     | **Log de auditoria** (mais recente primeiro): `?limit=` opcional. Cada registro traz `event`, `detail`, `poll_id`, `actor_ip` e `created_at`. O painel ainda permite **filtrar por texto** (evento/detalhe) sobre os registros carregados. |
+| GET/POST | `/api/admin/settings/results-delay` | Lê (`GET`) ou define (`POST {minutes}`) o **atraso dos resultados** aplicado a `/api/results` e `/painel-tv`. |
 
 > As páginas HTML de relatório (`/admin/relatorio*`) aceitam o Device Token tanto
 > pelo header `X-Device-Token` quanto por `?token=…` (usado nos links do painel).
+
+### Controles avançados: fechamento, conciliação e auditoria
+
+- **PIN de encerramento:** ao criar um plebiscito o servidor gera um PIN
+  numérico (4 a 6 dígitos), exibido em `/admin` e persistido na tabela `polls`.
+  `/api/admin/close` só encerra com o PIN correto (`X-Closure-Pin: PIN` ou
+  `{"closure_pin":"PIN"}`); a tentativa negada gera o evento `poll_close_denied`
+  e o plebiscito **continua aberto**.
+- **Atraso de resultados:** `/api/admin/settings/results-delay` define a janela
+  (em minutos) aplicada a `/api/results` e ao painel de TV — evita que a
+  apuração parcial influencie quem ainda não votou. `0` volta ao atraso clássico
+  em segundos (`RESULTS_DELAY_SECONDS`).
+- **Inspetor somente-leitura (`/api/admin/db/inspect`):** consulta apenas as
+  tabelas da whitelist (`polls`, `voters`, `votes`, `booths`, `settings`) e
+  devolve também `count`. A tabela `votes` é tratada como **anônima**: só
+  `id`, `poll_id` e `option_label` são expostos, sem vínculo com crachá, IP ou
+  horário.
+- **Conciliação de fechamento:** o estado (`/api/admin/state`) e a Ata
+  (`/api/admin/report`) trazem `reconciliation` com `checkins_total`,
+  `votes_cast`, `active_tokens`, `expected_checkins` e `balanced` — ou seja,
+  credenciados = votos + tokens ainda ativos na fila.
+- **Isolamento de rede:** `network_isolation` (padrão *Rede Local / Offline*,
+  configurável por `NETWORK_MODE`) é declarado no estado e impresso na Ata.
+- **Log de auditoria:** eventos críticos (`poll_start`, `poll_close`,
+  `poll_close_denied`, `booth_pair`, `booth_pair_denied`, `booth_remove`,
+  `pairing_change`, `purge`, `purge_denied`, `poll_delete`, `db_restore`,
+  `results_delay_set`) ficam em `audit_logs` com o IP do ator e são listados em
+  `/api/admin/audit` e na aba **Auditoria** do painel.
 
 Exemplo:
 
@@ -226,6 +266,15 @@ curl -X POST http://localhost:5000/api/admin/poll \
   cabines obsoletas (o dispositivo passa a precisar parear novamente).
 - A fila de tokens é atualizada de forma **atômica** (lock + SQLite WAL); se
   duas cabines disputarem o último token, apenas uma é aceita.
+- O **encerramento do plebiscito** exige o PIN de encerramento (gerado no
+  cadastro do plebiscito): sem o PIN correto, `/api/admin/close` responde **403**
+  e o plebiscito continua aberto (a tentativa fica registrada).
+- O **Inspetor do banco** é estritamente *somente-leitura* (apenas `SELECT` sobre
+  uma whitelist de tabelas) e a tabela `votes` é exposta em modo **anônimo** —
+  nunca devolve vínculo entre voto e votante.
+- O **log de auditoria** (`audit_logs`) guarda evento, detalhe, plebiscito e IP do
+  ator; eventos negados (`poll_close_denied`, `booth_pair_denied`,
+  `purge_denied`) são registrados para rastreabilidade.
 
 ## 7. Kiosk mode (cabines e TV)
 
@@ -321,33 +370,36 @@ Assim, depois de uma queda de energia, a cabine volta sozinha à tela de voto.
 ## 8. Testes
 
 ```bash
-bash test_e2e.sh       # fluxo funcional (67 cenários)
-bash test_db_path.sh   # resolução/fallback do caminho do SQLite (10 cenários)
-bash test_persist.sh   # persistência após reboot + atomicidade (24 cenários)
-bash test_history.sh   # histórico de plebiscitos + purga do banco (23 cenários)
+bash test_e2e.sh       # fluxo funcional (71 verificações)
+bash test_db_path.sh   # resolução/fallback do caminho do SQLite (10 verificações)
+bash test_persist.sh   # persistência após reboot + atomicidade (27 verificações)
+bash test_history.sh   # histórico, purga, PIN, inspetor e auditoria (128 verificações)
 ```
 
 Os quatro scripts sobem o servidor em uma **porta isolada** e usam um banco
 temporário, então podem ser executados sem afetar o banco de produção. No
-momento, **124 verificações** passam (67 + 10 + 24 + 23).
+momento, **236 verificações** passam (71 + 10 + 27 + 128).
 
 - `test_e2e.sh` — fluxo funcional em porta isolada: autenticação por token,
   check-in, bloqueio de voto duplo, consumo de tokens, atraso dos resultados,
   reset/close, todas as páginas, o **registro/numeração/alocação de cabines**, o
   **pareamento por PIN** (geração/definição/desativação, registro sem PIN → 403,
   reuso do token do `localStorage`), a **captura do IP do cliente** e a
-  **remoção/desconexão de cabines**, além da
+  **remoção/desconexão de cabines**, o **PIN de encerramento** (fechamento
+  negado sem PIN/`closure_pin` errado → 403 e fechamento aceito pelo header
+  `X-Closure-Pin`), além da
   **Ata de Fechamento / Relatório Oficial** (endpoint `/api/admin/report` e página
   `/admin/relatorio`: HTTP 200 com token, 401 sem token, e estatísticas agregadas
-  corretas — votos por opção, total de votos, votantes únicos e timestamps).
+  corretas — votos por opção, total de votos, votantes únicos, **conciliação
+  balanceada**, **isolamento de rede** declarado e timestamps).
 - `test_db_path.sh` — criação automática do diretório, caminho relativo e
   fallback quando o local é somente-leitura / inválido.
 - `test_persist.sh` — **reinicia** o servidor sobre o mesmo banco e confirma que
   o plebiscito ativo (pergunta/opções/status), a fila de `voting_tokens`, os
-  crachás e os votos permanecem; em seguida dispara votos em paralelo para
-  provar que o decremento da fila é atômico (nunca se consome mais que o
-  disponível). Também confirma que a **numeração das cabines** sobrevive ao
-  reinício.
+  crachás, os votos e o **PIN de encerramento** permanecem; em seguida dispara
+  votos em paralelo para provar que o decremento da fila é atômico (nunca se
+  consome mais que o disponível). Também confirma que a **numeração das cabines**
+  sobrevive ao reinício e que o status `closed` continua válido após o reboot.
 - `test_history.sh` — **histórico de plebiscitos** (`/api/admin/history`: exige
   token, lista do mais recente ao mais antigo, marca o plebiscito ativo e agrega
   votos/votantes/percentuais por opção), a **exclusão individual** de plebiscitos
@@ -356,9 +408,17 @@ momento, **124 verificações** passam (67 + 10 + 24 + 23).
   **verificação secundária** — sem ela retorna **403**; `logs` zera votos
   preservando os plebiscitos e `all` zera tudo). Cobre ainda o **limite de fila
   do check-in** (`/api/admin/settings/queue-threshold`, refletido em
-  `/api/booth/status`) e o **backup/restauração** (`/api/admin/backup/download`
+  `/api/booth/status`), o **backup/restauração** (`/api/admin/backup/download`
   gera um `.db` válido; `/api/admin/backup/restore` rejeita arquivo ausente ou
-  inválido e, após uma purga total, recompõe o histórico).
+  inválido e, após uma purga total, recompõe o histórico), o **PIN de
+  encerramento** (numérico, exposto no estado, rejeitado quando ausente/errado),
+  a **conciliação de fechamento** (credenciados = votos + tokens) e o
+  **isolamento de rede** no estado e na Ata, o **Inspetor do banco** somente
+  leitura (`/api/admin/db/inspect`: 401 sem token, whitelist de tabelas,
+  `votes` **anônima** e `count` conferido contra o `SELECT COUNT(*)` real) e o
+  **log de auditoria** (`/api/admin/audit`: 401 sem token, eventos de
+  fechamento/pareamento aceitos e negados, ordenação do mais recente primeiro,
+  IP do ator e `?limit=`).
 
 ## 9. Estrutura
 

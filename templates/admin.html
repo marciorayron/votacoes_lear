@@ -32,7 +32,9 @@
         <a class="nav-item" href="{{ url_for('index') }}">🏠 Hub / Início</a>
         <button class="nav-item active" data-view="home">📊 Painel Principal</button>
         <button class="nav-item" data-view="db">🗄️ Banco de Dados &amp; Histórico</button>
+        <button class="nav-item" data-view="inspector">🔍 Inspetor do Banco</button>
         <button class="nav-item" data-view="booths">🖥️ Cabines &amp; Pareamento</button>
+        <button class="nav-item" data-view="audit">📜 Auditoria de Eventos</button>
         <button class="nav-item" data-view="reports">🧾 Relatórios &amp; Atas</button>
       </nav>
       <div class="sidebar-footer">
@@ -80,13 +82,22 @@
               <div class="stat-box"><div class="v" id="s-voters">0</div><div class="l">Check-ins</div></div>
               <div class="stat-box"><div class="v" id="s-total">0</div><div class="l">Votos</div></div>
             </div>
+
+            <!-- Conciliação de fechamento, isolamento de rede e PIN de encerramento -->
+            <div class="stat-grid mt-12">
+              <div class="stat-box"><div class="v" id="s-recon">—</div><div class="l">Conciliação</div></div>
+              <div class="stat-box"><div class="v" id="s-network">—</div><div class="l">Isolamento de rede</div></div>
+              <div class="stat-box"><div class="v" id="s-closure-pin">—</div><div class="l">PIN de encerramento</div></div>
+            </div>
+            <div class="hint" id="recon-note"></div>
             <div class="mt-22">
               <div class="poll-q" id="cur-question">Nenhum plebiscito ativo.</div>
               <div class="bar-list" id="cur-bars"></div>
             </div>
             <div class="actions-bar">
               <button class="btn warn" id="reset-btn">⟲ Zerar contadores</button>
-              <button class="btn danger" id="close-btn">■ Encerrar votação</button>
+              <button class="btn danger" id="close-btn"
+                      title="Exige o PIN de encerramento exibido acima e no cartão de configurações">🔒 Encerrar votação (PIN)</button>
             </div>
             <div class="hint" id="cur-meta"></div>
           </div>
@@ -103,6 +114,32 @@
           <div class="hint">Quando a fila de check-ins aguardando cabine atingir este número,
             a tela <b>/checkin</b> passa a exibir o <b>alerta amarelo</b> (“fila cheia”) e toca um
             bipe, orientando o operador a pausar a leitura dos crachás. Padrão: <b>5</b>.</div>
+        </div>
+
+        <!-- ===== Atraso dos resultados & PIN de encerramento ===== -->
+        <div class="card mt-22">
+          <h3>⏱️ Atraso dos Resultados &amp; PIN de Encerramento</h3>
+          <label class="field" for="results-delay">Atraso dos resultados (em minutos)</label>
+          <div class="option-row">
+            <input type="number" id="results-delay" min="0" max="180" step="1" placeholder="0" />
+            <button class="btn primary" id="results-delay-save">Salvar</button>
+          </div>
+          <div class="hint">
+            <b>0</b> = resultados imediatos. Com <b>N &gt; 0</b> o <b>/painel-tv</b> só publica a
+            apuração em janelas de <b>N</b> minutos (evita influência sobre quem ainda não votou).
+            Valor atual: <b id="cfg-delay-min">–</b> min (<b id="cfg-delay-sec">–</b>s efetivos).
+          </div>
+
+          <hr class="sep" />
+
+          <label class="field" for="closure-pin">PIN de encerramento do plebiscito</label>
+          <div class="option-row">
+            <b id="closure-pin" class="pin-badge off">desativado</b>
+            <button class="btn ghost small" id="closure-pin-copy">⧉ Copiar PIN</button>
+          </div>
+          <div class="hint">O PIN (4–6 dígitos) é sorteado automaticamente ao <b>iniciar</b> cada
+            plebiscito e é <b>exigido</b> na confirmação de <b>Encerrar votação</b>. Guarde-o em
+            sigilo; plebiscitos antigos (sem PIN) encerram normalmente. Isolamento de rede: <b id="cfg-network">–</b>.</div>
         </div>
       </section>
 
@@ -199,8 +236,10 @@
 
           <div class="hint spaced">
             Rotas públicas: <b>/checkin</b> · <b>/cabine</b> · <b>/painel-tv</b> ·
-            Delay de resultados: <b id="cfg-delay">–</b>s ·
-            Cooldown de check-in: <b id="cfg-cooldown">–</b>s
+            Delay de resultados: <b id="cfg-delay">–</b>s
+            (<b id="cfg-delay-min-2">–</b> min) ·
+            Cooldown de check-in: <b id="cfg-cooldown">–</b>s ·
+            Rede: <b id="cfg-network-2">–</b>
           </div>
         </div>
       </section>
@@ -247,6 +286,78 @@
           </div>
           <div class="hint">Dica: na janela do relatório use <b>Imprimir → Salvar como PDF</b>
             e selecione o tamanho de papel <b>A4</b>.</div>
+        </div>
+
+        <!-- ===== Assinaturas dinamicas da Ata ===== -->
+        <div class="card mt-22">
+          <h3>✍️ Assinaturas da Ata de Fechamento</h3>
+          <p class="muted relaxed">
+            Informe os signatários que constarão na <b>Ata Oficial de Fechamento</b>.
+            Linhas deixadas em branco geram espaços para assinatura manual. As
+            assinaturas são aplicadas ao clicar em <b>Gerar</b> na Ata acima.
+          </p>
+          <div id="signatory-list"></div>
+          <div class="actions-bar flush">
+            <button class="btn ghost small" id="add-signatory">+ Adicionar signatário</button>
+          </div>
+          <div class="hint">Máximo de 8 assinaturas. O <b>cargo</b> aparece acima do nome e a
+            <b>matrícula/CPF</b> (opcional) ao lado do nome.</div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: Inspetor do Banco (somente leitura) ===== -->
+      <section class="view hidden" id="view-inspector">
+        <div class="card">
+          <h3>🔍 Inspetor do Banco <span class="badge b-closed">SOMENTE LEITURA</span></h3>
+          <p class="muted relaxed">
+            Consulta direta das tabelas do SQLite, <b>sem qualquer operação de escrita</b>.
+            Ideal para conferência em auditoria. A tabela <b>votes</b> é exibida no formato
+            <b>anônimo estrito</b> (apenas id, poll_id e opção escolhida — sem vínculo
+            votante&nbsp;→&nbsp;voto).
+          </p>
+          <div class="actions-bar flush">
+            <label class="field inline" for="inspect-table">Tabela</label>
+            <select id="inspect-table">
+              <option value="polls">polls (plebiscitos)</option>
+              <option value="voters">voters (check-ins)</option>
+              <option value="votes">votes (votos — anônimo)</option>
+              <option value="booths">booths (cabines)</option>
+              <option value="settings">settings (configurações)</option>
+            </select>
+            <button class="btn primary small" id="inspect-load">🔎 Inspecionar</button>
+            <button class="btn ghost small" id="inspect-export">📥 Exportar CSV</button>
+          </div>
+          <div class="hint" id="inspect-meta"></div>
+          <div class="inspect-wrap">
+            <table class="inspect-table">
+              <thead id="inspect-head"><tr><th class="muted">Selecione uma tabela e clique em Inspecionar.</th></tr></thead>
+              <tbody id="inspect-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: Auditoria de Eventos ===== -->
+      <section class="view hidden" id="view-audit">
+        <div class="card">
+          <h3>📜 Auditoria de Eventos</h3>
+          <p class="muted relaxed">
+            Registro cronológico (mais recente primeiro) dos eventos críticos do sistema:
+            início/encerramento de plebiscitos, tentativas de encerramento negadas por PIN
+            inválido, pareamento de cabines, purgas, restaurações e mudanças de configuração.
+          </p>
+          <div class="actions-bar flush">
+            <label class="field inline" for="audit-limit">Últimos</label>
+            <input type="number" id="audit-limit" min="1" max="1000" step="1" value="100" />
+            <label class="field inline" for="audit-event">Filtrar evento</label>
+            <input type="text" id="audit-event" placeholder="ex.: poll_close" autocomplete="off" />
+            <button class="btn primary small" id="audit-load">↻ Carregar</button>
+            <button class="btn ghost small" id="audit-export">📥 Exportar CSV</button>
+          </div>
+          <div class="hint" id="audit-meta"></div>
+          <div class="hist-list spaced" id="audit-list">
+            <div class="muted">Carregue para visualizar os eventos de auditoria.</div>
+          </div>
         </div>
       </section>
 

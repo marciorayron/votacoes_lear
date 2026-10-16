@@ -65,6 +65,8 @@ check() { # descricao, esperado, obtido
 
 admin() { curl -s -H "X-Device-Token: $TOKEN" "$@"; }
 jget()  { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)" 2>/dev/null; }
+# PIN de encerramento do plebiscito ativo (exigido por /api/admin/close).
+cpin()  { admin "$BASE/api/admin/state" | jget 'd["closure_pin"] or ""'; }
 
 # -------------------------------------------------------------------------- #
 echo "== Fase 1: popular o estado (servidor #1) =="
@@ -92,6 +94,10 @@ resp=$(curl -s -X POST "$BASE/api/booth/register" -H 'Content-Type: application/
   -d '{"booth_id":"persist-cab-A"}')
 echo "$resp" | grep -q '"label":"Cabine 01"'; check "cabine registrada (Cabine 01, pre-restart)" "0" "$?"
 
+# PIN de encerramento do plebiscito (deve sobreviver ao reboot, como o poll).
+CPIN=$(cpin)
+[ -n "$CPIN" ]; check "pre-restart: PIN de encerramento emitido" "0" "$?"
+
 # -------------------------------------------------------------------------- #
 echo "== Fase 2: reiniciar e verificar persistencia (servidor #2) =="
 stop_server
@@ -104,6 +110,7 @@ echo "$resp" | grep -q '"status":"open"';                    check "poll continu
 echo "$resp" | grep -q '"voting_tokens":0';                  check "FILA de tokens resetada no boot (0)" "0" "$?"
 echo "$resp" | grep -q '"voters_checked_in":2';              check "crachas persistiram (2)" "0" "$?"
 echo "$resp" | grep -q '"total_votes":1';                    check "votos persistiram (1)" "0" "$?"
+check "PIN de encerramento persistiu" "$CPIN" "$(cpin)"
 
 # A fila de tokens e VOLATIL (resetada a cada boot): sem tokens pendentes,
 # nao ha vaga. O plebiscito em si continua persistido (poll_id abaixo).
@@ -123,7 +130,9 @@ echo "$resp" | grep -q '"voting_tokens":0';    check "fila permanece zerada" "0"
 
 # -------------------------------------------------------------------------- #
 echo "== Fase 3: status 'closed' persiste apos reinicio =="
-admin -X POST "$BASE/api/admin/close" >/dev/null
+resp=$(admin -X POST "$BASE/api/admin/close" -H 'Content-Type: application/json' \
+  -d "{\"closure_pin\":\"$CPIN\"}")
+check "close aceita o PIN de encerramento" "closed" "$(printf '%s' "$resp" | jget 'd["poll"]["status"]')"
 resp=$(admin "$BASE/api/admin/state")
 echo "$resp" | grep -q '"status":"closed"'; check "close aplicado (pre-restart)" "0" "$?"
 stop_server

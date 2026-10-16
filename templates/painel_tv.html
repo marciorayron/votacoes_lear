@@ -44,7 +44,9 @@
 
   <footer>
     <span class="pill"><span class="dot" id="live-dot"></span><span id="live-text">conectando…</span></span>
-    <span>Atraso controlado dos resultados: <b id="delay">{{ results_delay }}</b>s</span>
+    <span>Atraso controlado dos resultados: <b id="delay">{{ results_delay }}</b>s
+      <span id="delay-mode">{% if results_delay_minutes %}(janelas de {{ results_delay_minutes }} min){% endif %}</span></span>
+    <span>🌐 Isolamento de rede: <b id="network-mode">{{ network_mode }}</b></span>
     <span>Atualizado: <b id="updated">–</b></span>
     <span>Votação anônima · sistema local</span>
     <button id="theme-toggle" class="theme-chip" type="button">🌙 Tema</button>

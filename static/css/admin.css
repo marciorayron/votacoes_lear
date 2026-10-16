@@ -199,3 +199,54 @@ html[data-theme="light"] .btn.report.highlight { color:#ffffff; }
   .report-opt { flex-wrap:wrap; }
   .report-opt .btn { width:100%; }
 }
+
+/* ------------------ Assinaturas dinamicas da Ata ------------------ */
+.signatory-row { display:flex; gap:8px; margin-bottom:10px; align-items:center; }
+.signatory-row .sig-name { flex:2; }
+.signatory-row .sig-role { flex:2; }
+.signatory-row .sig-doc { flex:1.4; }
+.signatory-row .icon-btn { flex:none; }
+@media (max-width:640px) {
+  .signatory-row { flex-wrap:wrap; }
+  .signatory-row .sig-name,
+  .signatory-row .sig-role,
+  .signatory-row .sig-doc { flex:1 1 100%; }
+}
+
+/* --------------------------------------------------------------------------- #
+   Utilidades adicionais: espaçamentos, estados e rótulos em linha
+   --------------------------------------------------------------------------- */
+.mt-12 { margin-top:12px; }
+label.field.inline { display:inline-block; margin:0; text-transform:none;
+                     letter-spacing:normal; font-size:.85rem; }
+.actions-bar.flush label.field.inline { align-self:center; }
+.actions-bar.flush input[type=number],
+.actions-bar.flush input[type=text],
+.actions-bar.flush select { width:auto; min-width:150px; padding:9px 12px; }
+/* Verde/vermelho nos valores de conciliação do painel principal. */
+.stat-box .v.ok  { color:var(--ok); }
+.stat-box .v.err { color:var(--err); }
+
+/* --------------------------------------------------------------------------- #
+   Inspetor do banco (somente leitura) e log de auditoria
+   --------------------------------------------------------------------------- */
+.inspect-wrap { margin-top:14px; max-height:60vh; overflow:auto;
+                border:1px solid var(--line); border-radius:14px; background:var(--input); }
+.inspect-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.inspect-table th, .inspect-table td { text-align:left; padding:9px 12px;
+  border-bottom:1px solid var(--line); white-space:nowrap;
+  max-width:340px; overflow:hidden; text-overflow:ellipsis; }
+.inspect-table thead th { position:sticky; top:0; background:var(--card);
+  color:var(--muted); font-size:.74rem; text-transform:uppercase;
+  letter-spacing:.05em; z-index:1; }
+.inspect-table tbody tr:last-child td { border-bottom:none; }
+.inspect-table td .muted { font-style:italic; }
+.hist-q code.ev { background:var(--accent-soft); color:var(--fg); border:1px solid var(--accent);
+  border-radius:8px; padding:2px 8px; font-size:.82rem; font-weight:700; }
+@media (max-width:640px) {
+  .actions-bar.flush label.field.inline,
+  .actions-bar.flush input[type=number],
+  .actions-bar.flush input[type=text],
+  .actions-bar.flush select { width:100%; }
+  .inspect-wrap { max-height:52vh; }
+}

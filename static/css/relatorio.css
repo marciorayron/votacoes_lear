@@ -73,6 +73,31 @@ tr.total td { font-weight:800; background:var(--band); }
 .statement { margin-top:20px; text-align:justify; font-size:10.5pt; }
 .statement p { margin:0 0 8px; }
 
+/* Regras de negocio / integridade / declaracao de anonimato */
+h3.sub-section { font-size:10.5pt; text-transform:uppercase; letter-spacing:.06em;
+                 color:var(--accent); margin:18px 0 8px; }
+.ok-tag { font-weight:800; color:#15803d; font-size:9pt; margin-left:6px; }
+.warn-tag { font-weight:800; color:#b45309; font-size:9pt; margin-left:6px; }
+
+.integrity, .disclosure {
+  border:1px solid var(--line); border-radius:8px; padding:12px 14px;
+  background:#f8fafc; font-size:10pt;
+}
+.integrity p, .disclosure p { margin:0 0 8px; }
+.integrity .hash-row { display:flex; gap:8px; align-items:baseline; margin:4px 0; }
+.integrity .hash-row .label { min-width:44%; font-weight:700; color:var(--muted); }
+.integrity code, .disclosure code {
+  font-family:"SFMono-Regular",Menlo,Consolas,monospace; font-size:9pt;
+  background:#eef2f7; border:1px solid var(--line); border-radius:4px; padding:1px 5px;
+}
+.integrity code.hash { word-break:break-all; }
+.verdict { margin-top:8px; padding:8px 10px; border-radius:6px; font-weight:800; font-size:10pt; }
+.verdict.ok { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+.verdict.bad { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+.verdict.pending { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+.disclosure .schema td.label { width:30%; }
+.disclosure .note { font-size:9pt; color:var(--muted); margin:8px 0 0; }
+
 /* Assinaturas */
 .signatures { display:grid; grid-template-columns:1fr 1fr; gap:34px 40px; margin-top:46px; }
 .sign-line { border-top:1px solid var(--ink); padding-top:6px; text-align:center; }
@@ -98,6 +123,7 @@ footer.report { margin-top:34px; border-top:1px solid var(--line); padding-top:1
   .page { width:auto; min-height:auto; margin:0; padding:0; box-shadow:none; }
   h2.section, .question { break-inside:avoid; }
   .signatures { break-inside:avoid; }
+  .integrity, .disclosure { break-inside:avoid; }
   .poll-block { break-inside:avoid; }
   table { break-inside:auto; }
   tr { break-inside:avoid; }

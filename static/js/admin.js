@@ -14,6 +14,10 @@ let token = '';
 let refreshTimer = null;
 let historyLoaded = false;
 let lastHistory = null;   // ultimo payload de /api/admin/history (para CSV)
+let inspectLoaded = false;
+let lastInspect = null;   // ultimo payload de /api/admin/db/inspect (para CSV)
+let auditLoaded = false;
+let lastAudit = null;     // ultimo payload de /api/admin/audit (para CSV)
 
 // ------------------ Utilidades ------------------
 function toast(message, kind) {
@@ -114,6 +118,62 @@ function collectOptions() {
     .filter(v => v.length > 0);
 }
 
+// ------------------ Assinaturas dinamicas da Ata ------------------
+const signatoryList = document.getElementById('signatory-list');
+const MAX_SIGNATORIES = 8;
+
+function addSignatory(name, role, doc) {
+  if (!signatoryList) return null;
+  if (signatoryList.querySelectorAll('.signatory-row').length >= MAX_SIGNATORIES) {
+    toast('Máximo de ' + MAX_SIGNATORIES + ' assinaturas.', 'err');
+    return null;
+  }
+  const row = document.createElement('div');
+  row.className = 'signatory-row';
+  row.innerHTML =
+    '<input type="text" class="sig-name" placeholder="Nome" value="" />' +
+    '<input type="text" class="sig-role" placeholder="Cargo / função" value="" />' +
+    '<input type="text" class="sig-doc" placeholder="Matrícula / CPF" value="" />' +
+    '<button class="icon-btn" title="Remover">✕</button>';
+  row.querySelector('.sig-name').value = name || '';
+  row.querySelector('.sig-role').value = role || '';
+  row.querySelector('.sig-doc').value = doc || '';
+  row.querySelector('.icon-btn').addEventListener('click', () => row.remove());
+  signatoryList.appendChild(row);
+  return row;
+}
+
+function collectSignatories() {
+  if (!signatoryList) return [];
+  return Array.from(signatoryList.querySelectorAll('.signatory-row'))
+    .map(row => ({
+      name: row.querySelector('.sig-name').value.trim(),
+      role: row.querySelector('.sig-role').value.trim(),
+      doc:  row.querySelector('.sig-doc').value.trim()
+    }))
+    .filter(s => s.name.length > 0);
+}
+
+// Serializa as assinaturas na query string da Ata (listas paralelas).
+function signatoryQuery() {
+  const params = new URLSearchParams();
+  collectSignatories().forEach(s => {
+    params.append('sig_nome', s.name);
+    params.append('sig_cargo', s.role);
+    params.append('sig_doc', s.doc);
+  });
+  const qs = params.toString();
+  return qs ? '&' + qs : '';
+}
+
+function initSignatories() {
+  // Linhas padrao (em branco) alinhadas ao documento oficial.
+  [['', 'Presidente da Mesa', ''],
+   ['', 'Mesário(a) 1', ''],
+   ['', 'Mesário(a) 2', ''],
+   ['', 'Testemunha', '']].forEach(([n, r, d]) => addSignatory(n, r, d));
+}
+
 // ------------------ Pareamento ------------------
 async function generatePairingPin() {
   try {
@@ -201,6 +261,8 @@ function unlock() {
       startAutoRefresh();
       toast('Acesso liberado.', 'ok');
       if (currentView === 'db') loadHistory(false);
+      if (currentView === 'inspector') loadInspect(false);
+      if (currentView === 'audit') loadAudit(false);
     })
     .catch(err => {
       unlockHint.textContent = err.message === 'unauthorized'
@@ -224,7 +286,9 @@ function lock(message) {
 const VIEW_TITLES = {
   home: '📊 Painel Principal',
   db: '🗄️ Banco de Dados & Histórico',
+  inspector: '🔍 Inspetor do Banco',
   booths: '🖥️ Cabines & Pareamento',
+  audit: '📜 Auditoria de Eventos',
   reports: '🧾 Relatórios & Atas'
 };
 let currentView = 'home';
@@ -238,6 +302,8 @@ function showView(name) {
     b.classList.toggle('active', b.dataset.view === name));
   document.getElementById('view-title').textContent = VIEW_TITLES[name];
   if (name === 'db') loadHistory(false);
+  if (name === 'inspector' && !inspectLoaded) loadInspect(false);
+  if (name === 'audit' && !auditLoaded) loadAudit(false);
 }
 
 // ------------------ Tema (claro / escuro) ------------------
@@ -440,6 +506,201 @@ async function saveQueueThreshold() {
   }
 }
 
+// ------------------ Atraso dos resultados (janelas de divulgação) ------------------
+async function saveResultsDelay() {
+  const input = document.getElementById('results-delay');
+  const minutes = parseInt((input.value || '').trim(), 10);
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    toast('Informe um valor válido (minutos >= 0).', 'err');
+    return;
+  }
+  const btn = document.getElementById('results-delay-save');
+  btn.disabled = true;
+  try {
+    const { ok, data } = await api('/api/admin/settings/results-delay', 'POST',
+                                   { minutes: minutes });
+    if (!ok || data.ok === false) {
+      toast(data.detail || 'Falha ao salvar o atraso dos resultados.', 'err');
+      return;
+    }
+    if (data.state) renderState(data.state);
+    const secs = data.results_delay != null ? data.results_delay : data.results_delay_seconds;
+    toast('Atraso dos resultados: ' + data.results_delay_minutes + ' min' +
+          (secs != null ? ' (' + secs + 's).' : '.'), 'ok');
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    toast('Falha ao salvar o atraso dos resultados.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Copia o PIN de encerramento exibido no painel (sem expor nada no servidor).
+function copyClosurePin() {
+  const el = document.getElementById('closure-pin');
+  const pin = el ? (el.textContent || '').trim() : '';
+  if (!pin || (el && el.classList.contains('off'))) {
+    toast('Nenhum PIN de encerramento ativo.', 'err');
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(pin)
+      .then(() => toast('PIN de encerramento copiado.', 'ok'))
+      .catch(() => toast('Não foi possível copiar.', 'err'));
+  } else {
+    toast('Cópia não suportada neste navegador.', 'err');
+  }
+}
+
+// ------------------ Inspetor do banco (somente leitura) ------------------
+async function loadInspect(showError) {
+  const table = (document.getElementById('inspect-table') || {}).value || 'polls';
+  try {
+    const { data } = await api('/api/admin/db/inspect?table=' + encodeURIComponent(table));
+    renderInspect(data);
+    inspectLoaded = true;
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    if (showError) toast('Falha ao inspecionar a tabela.', 'err');
+  }
+}
+
+function inspectCell(value) {
+  if (value === null || value === undefined) return '<span class="muted">NULL</span>';
+  return escapeHtml(String(value));
+}
+
+function renderInspect(data) {
+  lastInspect = data || null;
+  const head = document.getElementById('inspect-head');
+  const body = document.getElementById('inspect-body');
+  const metaEl = document.getElementById('inspect-meta');
+  if (!head || !body) return;
+
+  const columns = (data && data.columns) || [];
+  const rows = (data && data.rows) || [];
+  const table = (data && data.table) || '–';
+
+  head.innerHTML = '<tr>' + (columns.length
+    ? columns.map(c => '<th>' + escapeHtml(c) + '</th>').join('')
+    : '<th class="muted">Sem colunas</th>') + '</tr>';
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td class="muted" colspan="' +
+      Math.max(1, columns.length) + '">Tabela vazia.</td></tr>';
+  } else {
+    body.innerHTML = rows.map(r => '<tr>' +
+      columns.map(c => '<td>' + inspectCell(r[c]) + '</td>').join('') + '</tr>').join('');
+  }
+
+  if (metaEl) {
+    const shown = (data && data.shown) || 0;
+    const count = (data && data.count) || 0;
+    const limit = (data && data.limit) || 0;
+    let txt = 'Tabela <b>' + escapeHtml(table) + '</b>: ' + count + ' registro(s), ' +
+      shown + ' exibido(s)' + (data && data.truncated ? ' (limitado a ' + limit + ')' : '') +
+      ' · somente leitura.';
+    if (data && data.anonymous) txt += ' <b>Formato anônimo estrito</b>.';
+    if (data && data.schema_note) txt += ' ' + escapeHtml(data.schema_note);
+    metaEl.innerHTML = txt;
+  }
+}
+
+// Exporta as linhas exibidas pelo inspetor em CSV (respeita a whitelist).
+function exportInspectCsv() {
+  const d = lastInspect;
+  if (!d || !d.columns || !d.rows || !d.rows.length) {
+    toast('Nada a exportar: inspecione uma tabela com dados.', 'err');
+    return;
+  }
+  const rows = [d.columns.map(csvEscape).join(',')];
+  d.rows.forEach(r => rows.push(d.columns.map(c => csvEscape(r[c])).join(',')));
+  const csv = '\ufeff' + rows.join('\r\n') + '\r\n';
+  downloadFile('inspetor_' + d.table + '.csv', csv, 'text/csv;charset=utf-8');
+  toast('CSV da tabela ' + d.table + ' gerado.', 'ok');
+}
+
+// ------------------ Auditoria de eventos ------------------
+async function loadAudit(showError) {
+  const limitInput = document.getElementById('audit-limit');
+  let limit = parseInt(((limitInput && limitInput.value) || '').trim(), 10);
+  if (!Number.isFinite(limit) || limit < 1) limit = 100;
+  try {
+    const { data } = await api('/api/admin/audit?limit=' + encodeURIComponent(limit));
+    renderAudit(data);
+    auditLoaded = true;
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    if (showError) toast('Falha ao carregar a auditoria.', 'err');
+  }
+}
+
+// Aplica o filtro textual da tela sobre os eventos carregados.
+function auditFilteredEntries() {
+  const entries = (lastAudit && lastAudit.entries) || [];
+  const filterEl = document.getElementById('audit-event');
+  const needle = ((filterEl && filterEl.value) || '').trim().toLowerCase();
+  if (!needle) return entries;
+  return entries.filter(e =>
+    String(e.event || '').toLowerCase().includes(needle) ||
+    String(e.detail || '').toLowerCase().includes(needle));
+}
+
+function renderAudit(data) {
+  lastAudit = data || null;
+  const list = document.getElementById('audit-list');
+  const metaEl = document.getElementById('audit-meta');
+  const entries = auditFilteredEntries();
+  const all = (data && data.entries) || [];
+
+  if (metaEl) {
+    metaEl.innerHTML = 'Eventos carregados: <b>' + all.length + '</b>' +
+      (entries.length !== all.length
+        ? ' · exibindo <b>' + entries.length + '</b> após filtro' : '') +
+      ' · mais recente primeiro.';
+  }
+  if (!list) return;
+  if (!entries.length) {
+    list.innerHTML = '<div class="muted">Nenhum evento de auditoria registrado' +
+      (all.length ? ' com este filtro.' : '.') + '</div>';
+    return;
+  }
+  list.innerHTML = entries.map(e => {
+    const line = 'ID #' + e.id +
+      (e.poll_id != null ? ' · plebiscito #' + e.poll_id : '') +
+      (e.actor_ip ? ' · IP ' + escapeHtml(e.actor_ip) : '') +
+      ' · ' + fmtDateTimeBR(e.created_at);
+    return '<div class="hist-item">' +
+      '<div class="hist-top"><div class="hist-q">' +
+        '<code class="ev">' + escapeHtml(e.event || '–') + '</code> ' +
+        escapeHtml(e.detail || '') +
+      '</div></div>' +
+      '<div class="hist-meta muted">' + line + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+// Exporta os eventos de auditoria exibidos (respeita o filtro aplicado).
+function exportAuditCsv() {
+  const entries = auditFilteredEntries();
+  if (!entries.length) {
+    toast('Nada a exportar: carregue a auditoria.', 'err');
+    return;
+  }
+  const rows = ['ID,Evento,Detalhe,Plebiscito,IP,Data/Hora'];
+  entries.forEach(e => rows.push([
+    String(e.id ?? ''),
+    csvEscape(e.event),
+    csvEscape(e.detail),
+    e.poll_id != null ? String(e.poll_id) : '',
+    csvEscape(e.actor_ip),
+    csvEscape(e.created_at)
+  ].join(',')));
+  const csv = '\ufeff' + rows.join('\r\n') + '\r\n';
+  downloadFile('auditoria_eventos.csv', csv, 'text/csv;charset=utf-8');
+  toast('CSV da auditoria gerado (' + entries.length + ' evento(s)).', 'ok');
+}
+
 // ------------------ Backup / Restauracao do banco ------------------
 // Baixa um backup consistente (.db) gerado pelo servidor (1 clique).
 async function downloadBackup() {
@@ -524,7 +785,9 @@ async function startPoll() {
   try {
     const { data } = await api('/api/admin/poll', 'POST', { question, options });
     renderState(data);
-    toast('Plebiscito iniciado.', 'ok');
+    const pin = data.closure_pin || (data.poll && data.poll.closure_pin) || '';
+    if (pin) toast('Plebiscito iniciado. PIN de encerramento: ' + pin, 'ok');
+    else toast('Plebiscito iniciado.', 'ok');
   } catch (err) {
     if (err.message === 'unauthorized') return;
     toast('Erro ao iniciar o plebiscito.', 'err');
@@ -547,8 +810,25 @@ async function resetPoll() {
 
 async function closePoll() {
   if (!confirm('Encerrar a votação atual? As cabines deixarão de registrar votos.')) return;
+  // PIN de encerramento: exibido no painel (sorteado ao iniciar o plebiscito).
+  const answer = prompt(
+    'Informe o PIN de ENCERRAMENTO do plebiscito (deixe vazio se o plebiscito não tiver PIN):'
+  );
+  if (answer === null) return;   // cancelado pelo operador
+  const pin = answer.trim();
   try {
-    const { data } = await api('/api/admin/close', 'POST');
+    const { ok, data } = await api('/api/admin/close', 'POST',
+                                   pin ? { closure_pin: pin } : {});
+    if (!ok || data.ok === false) {
+      const code = (data && data.error) || '';
+      if (code === 'invalid_closure_pin')
+        toast('PIN de encerramento inválido. O encerramento foi bloqueado e registrado na auditoria.', 'err');
+      else if (code === 'no_active_poll')
+        toast('Nada a encerrar (sem plebiscito ativo).', 'err');
+      else
+        toast(data.detail || 'Falha ao encerrar a votação.', 'err');
+      return;
+    }
     renderState(data);
     toast('Votação encerrada.', 'ok');
   } catch (err) {
@@ -568,7 +848,9 @@ function openReport(kind) {
   if (!token) { toast('Sessão bloqueada.', 'err'); return; }
   // Abre a pagina de relatorio (A4) em nova aba; salvar como PDF via impressao.
   const path = REPORT_PAGES[kind] || REPORT_PAGES.ata;
-  window.open(path + '?token=' + encodeURIComponent(token), '_blank');
+  // A Ata recebe as linhas de assinatura dinamicas preenchidas no painel.
+  const extra = kind === 'ata' ? signatoryQuery() : '';
+  window.open(path + '?token=' + encodeURIComponent(token) + extra, '_blank');
 }
 // ------------------ Wiring ------------------
 document.getElementById('unlock-btn').addEventListener('click', unlock);
@@ -578,6 +860,8 @@ document.getElementById('lock-btn').addEventListener('click', () => lock('Sessã
 document.getElementById('refresh-btn').addEventListener('click', () => {
   refreshState(true);
   if (currentView === 'db') loadHistory(true);
+  if (currentView === 'inspector') loadInspect(true);
+  if (currentView === 'audit') loadAudit(true);
 });
 document.getElementById('add-option').addEventListener('click', () => addOption(''));
 document.getElementById('preset-yesno').addEventListener('click', setPresetYesNo);
@@ -587,6 +871,8 @@ document.getElementById('close-btn').addEventListener('click', closePoll);
 document.getElementById('report-ata-btn').addEventListener('click', () => openReport('ata'));
 document.getElementById('report-history-btn').addEventListener('click', () => openReport('history'));
 document.getElementById('report-booths-btn').addEventListener('click', () => openReport('booths'));
+document.getElementById('add-signatory').addEventListener('click', () => addSignatory('', '', ''));
+initSignatories();
 document.getElementById('pairing-generate').addEventListener('click', generatePairingPin);
 document.getElementById('pairing-copy').addEventListener('click', copyPairingPin);
 document.getElementById('pairing-clear').addEventListener('click', clearPairingPin);
@@ -605,6 +891,23 @@ document.getElementById('queue-threshold').addEventListener('keydown',
   e => { if (e.key === 'Enter') saveQueueThreshold(); });
 document.getElementById('backup-download').addEventListener('click', downloadBackup);
 document.getElementById('backup-restore').addEventListener('click', restoreBackup);
+// Atraso dos resultados + PIN de encerramento.
+document.getElementById('results-delay-save').addEventListener('click', saveResultsDelay);
+document.getElementById('results-delay').addEventListener('keydown',
+  e => { if (e.key === 'Enter') saveResultsDelay(); });
+document.getElementById('closure-pin-copy').addEventListener('click', copyClosurePin);
+// Inspetor do banco (somente leitura).
+document.getElementById('inspect-load').addEventListener('click', () => loadInspect(true));
+document.getElementById('inspect-export').addEventListener('click', exportInspectCsv);
+document.getElementById('inspect-table').addEventListener('change', () => loadInspect(true));
+// Auditoria de eventos.
+document.getElementById('audit-load').addEventListener('click', () => loadAudit(true));
+document.getElementById('audit-export').addEventListener('click', exportAuditCsv);
+document.getElementById('audit-event').addEventListener('input', () => {
+  if (lastAudit) renderAudit(lastAudit);
+});
+document.getElementById('audit-event').addEventListener('keydown',
+  e => { if (e.key === 'Enter') loadAudit(true); });
 
 // ------------------ Init ------------------
 (function init() {
@@ -697,6 +1000,57 @@ function renderState(s) {
   renderPairing(s.pairing_pin || '');
   setText('cfg-delay', s.results_delay ?? '–');
   setText('cfg-cooldown', s.cooldown ?? '–');
+  setText('cfg-delay-min', s.results_delay_minutes ?? '–');
+  setText('cfg-delay-sec', s.results_delay ?? '–');
+  setText('cfg-delay-min-2', s.results_delay_minutes ?? '–');
+  setText('cfg-network', s.network_isolation || '–');
+  setText('cfg-network-2', s.network_isolation || '–');
+  setText('s-network', s.network_isolation || '–');
+
+  // PIN de encerramento do plebiscito ativo (exigido em /api/admin/close).
+  const pin = s.closure_pin || (poll && poll.closure_pin) || '';
+  const pinEl = document.getElementById('closure-pin');
+  if (pinEl) {
+    pinEl.textContent = pin || 'desativado';
+    pinEl.classList.toggle('off', !pin);
+  }
+  setText('s-closure-pin', pin || '—');
+
+  // Conciliacao de fechamento: check-ins == votos + tokens ativos.
+  const rec = s.reconciliation || null;
+  const reconBox = document.getElementById('s-recon');
+  if (reconBox) {
+    if (!rec) {
+      reconBox.textContent = '—';
+      reconBox.classList.remove('ok', 'err');
+    } else {
+      reconBox.textContent = rec.balanced ? 'OK' : ('Δ ' + (rec.difference ?? '?'));
+      reconBox.classList.toggle('ok', !!rec.balanced);
+      reconBox.classList.toggle('err', !rec.balanced);
+    }
+  }
+  const reconNote = document.getElementById('recon-note');
+  if (reconNote) {
+    if (!rec) {
+      reconNote.textContent = 'Conciliação disponível com um plebiscito ativo ' +
+        '(check-ins = votos + tokens em fila).';
+    } else {
+      reconNote.textContent = 'Conciliação: ' +
+        (rec.checkins_total ?? 0) + ' check-in(s) = ' +
+        (rec.votes_cast ?? 0) + ' voto(s) + ' +
+        (rec.active_tokens ?? 0) + ' token(s) em fila' +
+        (rec.balanced
+          ? ' — exato.'
+          : ' — divergência de ' + (rec.difference ?? 0) + ' (verifique a auditoria).');
+    }
+  }
+
+  // Atraso de resultados (minutos) - nao sobrescreve o campo em edicao.
+  const delayEl = document.getElementById('results-delay');
+  if (delayEl && s.results_delay_minutes != null &&
+      document.activeElement !== delayEl) {
+    delayEl.value = s.results_delay_minutes;
+  }
 
   // Limite de fila do check-in (Alerta Amarelo) - nao sobrescreve o campo
   // enquanto o administrador estiver editando-o.

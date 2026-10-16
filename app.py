@@ -45,6 +45,7 @@ Execucao
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -88,9 +89,70 @@ RESULTS_DELAY_SECONDS = int(os.environ.get("RESULTS_DELAY_SECONDS", "5"))
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "5000"))
 
+# --------------------------------------------------------------------------- #
+# Isolamento de rede / status offline
+# --------------------------------------------------------------------------- #
+# O sistema roda em uma rede LOCAL dedicada (roteador isolado, sem internet).
+# O rotulo e exibido no painel administrativo, no /api/health e no cabecalho da
+# Ata de Fechamento, declarando que a apuracao ocorre "Rede Local / Offline".
+NETWORK_MODE = os.environ.get("NETWORK_MODE", "Rede Local / Offline")
+
+# --------------------------------------------------------------------------- #
+# Atraso / batching configuravel dos resultados (anti-inferencia em tempo real)
+# --------------------------------------------------------------------------- #
+# A chave `results_delay_minutes` (tabela `settings`) permite agrupar a
+# divulgacao PUBLICA dos votos em janelas de N minutos, dificultando que um
+# observador externo correlacione o voto recem-cast ao votante que acabou de se
+# credenciar. Quando 0 (default), mantem-se o atraso em segundos
+# (RESULTS_DELAY_SECONDS). Limite: 0..1440 (24h).
+RESULTS_DELAY_MINUTES_SETTING = "results_delay_minutes"
+RESULTS_DELAY_MINUTES_DEFAULT = int(os.environ.get("RESULTS_DELAY_MINUTES", "0"))
+
+# --------------------------------------------------------------------------- #
+# Inspetor de banco de dados (somente leitura) e PIN de encerramento
+# --------------------------------------------------------------------------- #
+# Tabelas exibiveis pelo endpoint /api/admin/db/inspect (whitelist) e limite de
+# linhas retornadas por consulta (evita respostas gigantes no painel).
+DB_INSPECT_TABLES = ("polls", "voters", "votes", "booths", "settings")
+DB_INSPECT_ROW_LIMIT = 500
+
+# PIN numerico de encerramento exigido em /api/admin/close (4 a 6 digitos).
+CLOSURE_PIN_MIN_LEN = 4
+CLOSURE_PIN_MAX_LEN = 6
+
+# Tabela de log de auditoria (eventos criticos do painel).
+AUDIT_LOG_LIMIT_DEFAULT = 100
+AUDIT_LOG_LIMIT_MAX = 500
+
 # Identidade exibida na Ata/relatorio oficial (cabecalho do documento).
 FACTORY_NAME = os.environ.get("FACTORY_NAME", "Fábrica")
 REPORT_TITLE = "Ata de Fechamento — Relatório Oficial"
+
+# --------------------------------------------------------------------------- #
+# Integridade criptografica (SHA-256)
+# --------------------------------------------------------------------------- #
+# Ao ENCERRAR um plebiscito calculamos um digest SHA-256 sobre o estado final
+# (metadados do plebiscito + votos anonimos na ordem de insercao) e o
+# persisitimos em `polls.integrity_hash`. Qualquer alteracao manual posterior
+# no banco (sqlite3, DB Browser, script externo) faz o digest recalculado
+# divergir do armazenado -> `verify_poll_integrity()` acusa ADULTERACAO.
+#
+# O digest inclui um segredo de aplicacao (prefixo) para dificultar que um
+# editor malicioso simplesmente recalcule o hash. O segredo pode ser fixado
+# via variavel de ambiente INTEGRITY_SECRET (recomendado em producao).
+INTEGRITY_ALGORITHM = "SHA-256"
+INTEGRITY_SECRET = os.environ.get(
+    "INTEGRITY_SECRET", "votacao-local-integrity-v1"
+)
+
+# Linhas de assinatura padrao da Ata (usadas quando nenhuma e informada).
+DEFAULT_SIGNATORIES = [
+    {"name": "", "role": "Presidente da Mesa", "doc": ""},
+    {"name": "", "role": "Mesário(a) 1", "doc": ""},
+    {"name": "", "role": "Mesário(a) 2", "doc": ""},
+    {"name": "", "role": "Testemunha", "doc": ""},
+]
+MAX_SIGNATORIES = 8
 
 POLL_STATUS_OPEN = "open"
 POLL_STATUS_CLOSED = "closed"
@@ -366,20 +428,30 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS polls (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                question   TEXT NOT NULL,
-                options    TEXT NOT NULL,               -- JSON: [{"id","label"}]
-                status     TEXT NOT NULL DEFAULT 'open',
-                created_at TEXT NOT NULL,
-                closed_at  TEXT
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                question             TEXT NOT NULL,
+                options              TEXT NOT NULL,          -- JSON: [{"id","label"}]
+                status               TEXT NOT NULL DEFAULT 'open',
+                created_at           TEXT NOT NULL,
+                closed_at            TEXT,
+                integrity_hash       TEXT,                   -- digest SHA-256 do estado selado
+                integrity_algorithm  TEXT,                   -- ex.: 'SHA-256'
+                closure_pin          TEXT                    -- PIN (4-6 digitos) p/ encerrar
             );
 
+            -- ----------------------------------------------------------------- #
+            -- VOTOS ANONIMOS.
+            -- A tabela `votes` contem ESTRITAMENTE (id, poll_id, option_label):
+            --   * SEM chave estrangeira (nenhum vinculo com `voters`/cabines);
+            --   * SEM carimbo de tempo por voto (created_at);
+            --   * SEM badge_id / voter_id / IP.
+            -- Como nao existe nenhuma coluna que identifique o votante, e
+            -- MATEMATICAMENTE IMPOSSIVEL correlacionar um votante a sua escolha.
+            -- ----------------------------------------------------------------- #
             CREATE TABLE IF NOT EXISTS votes (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                poll_id    INTEGER NOT NULL,
-                option_id  TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                poll_id      INTEGER NOT NULL,
+                option_label TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -399,8 +471,23 @@ def init_db() -> None:
                 registered_at TEXT NOT NULL
             );
 
+            -- ----------------------------------------------------------------- #
+            -- LOG DE AUDITORIA (eventos criticos do painel administrativo).
+            -- Registra QUEM fez O QUE e QUANDO (IP + instante UTC). Nunca guarda
+            -- o vinculo votante->voto; apenas eventos operacionais.
+            -- ----------------------------------------------------------------- #
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                event      TEXT NOT NULL,            -- ex.: 'poll_start','poll_close','booth_pair'
+                detail     TEXT NOT NULL DEFAULT '', -- descricao legivel (sem dados sensiveis)
+                poll_id    INTEGER,                  -- plebiscito relacionado (quando aplicavel)
+                actor_ip   TEXT,                     -- IP do operador/cliente
+                created_at TEXT NOT NULL             -- instante UTC (ISO)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_votes_poll ON votes(poll_id);
             CREATE INDEX IF NOT EXISTS idx_booths_number ON booths(number);
+            CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
             """
         )
         # Migra bancos ja existentes (adiciona colunas novas de forma idempotente).
@@ -438,16 +525,104 @@ def init_db() -> None:
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
-    """Adiciona colunas novas a bancos ja existentes (idempotente).
+    """Adiciona colunas/tabelas novas a bancos ja existentes (idempotente).
 
     Necessario porque ``CREATE TABLE IF NOT EXISTS`` nao altera tabelas
-    preexistentes: sem isto, um ``votacao.db`` antigo ficaria sem as colunas
-    de IP/pareamento e as consultas falhariam.
+    preexistentes: sem isto um ``votacao.db`` antigo ficaria sem as colunas
+    de IP/pareamento (booths), sem as colunas de integridade (polls) e, o mais
+    importante, com a tabela ``votes`` no formato antigo (``option_id`` +
+    ``created_at`` + FK), que permite correlacionar o voto ao votante. Aqui a
+    ``votes`` e reconstruida para o formato ANONIMO estrito
+    ``(id, poll_id, option_label)``.
     """
+    # --- booths: colunas de IP/pareamento --------------------------------- #
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(booths)")}
     for column in ("client_ip", "pairing_token"):
         if column not in existing:
             conn.execute(f"ALTER TABLE booths ADD COLUMN {column} TEXT")
+
+    # --- polls: colunas de integridade (SHA-256) -------------------------- #
+    poll_cols = {row["name"] for row in conn.execute("PRAGMA table_info(polls)")}
+    if "integrity_hash" not in poll_cols:
+        conn.execute("ALTER TABLE polls ADD COLUMN integrity_hash TEXT")
+    if "integrity_algorithm" not in poll_cols:
+        conn.execute("ALTER TABLE polls ADD COLUMN integrity_algorithm TEXT")
+    # PIN de encerramento (bancos criados antes desta funcionalidade).
+    if "closure_pin" not in poll_cols:
+        conn.execute("ALTER TABLE polls ADD COLUMN closure_pin TEXT")
+
+    # --- audit_logs: garante a tabela em bancos antigos/restaurados -------- #
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            event      TEXT NOT NULL,
+            detail     TEXT NOT NULL DEFAULT '',
+            poll_id    INTEGER,
+            actor_ip   TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)"
+    )
+
+    # --- votes: migra o formato antigo para o anonimo estrito ------------- #
+    _migrate_votes_schema(conn)
+
+
+def _migrate_votes_schema(conn: sqlite3.Connection) -> None:
+    """Reconstroi ``votes`` para ``(id, poll_id, option_label)`` se preciso.
+
+    Bancos antigos guardavam ``option_id`` + ``created_at`` e uma FK para
+    ``polls`` - o ``created_at`` permitia, em tese, correlacionar a ordem dos
+    check-ins com a ordem dos votos. A migracao converte ``option_id`` em
+    ``option_label`` (via o JSON de opcoes do plebiscito) e DESCARTA o
+    carimbo de tempo, garantindo o anonimato absoluto.
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(votes)")}
+    if not cols or "option_label" in cols:
+        # Tabela no formato novo (ou recem-criada) -> nada a fazer.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_poll ON votes(poll_id)")
+        return
+
+    # Mapeia option_id -> label usando o JSON de opcoes de cada plebiscito.
+    label_by_id: dict[str, str] = {}
+    for row in conn.execute("SELECT options FROM polls"):
+        try:
+            opts = json.loads(row["options"])
+        except (TypeError, ValueError):
+            continue
+        for opt in opts or []:
+            if isinstance(opt, dict):
+                label_by_id[str(opt.get("id"))] = str(opt.get("label", ""))
+
+    legacy = []
+    if "option_id" in cols:
+        legacy = conn.execute(
+            "SELECT id, poll_id, option_id FROM votes ORDER BY id"
+        ).fetchall()
+
+    conn.execute("DROP INDEX IF EXISTS idx_votes_poll")
+    conn.execute("ALTER TABLE votes RENAME TO votes_legacy")
+    conn.execute(
+        """
+        CREATE TABLE votes (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            poll_id      INTEGER NOT NULL,
+            option_label TEXT NOT NULL
+        )
+        """
+    )
+    for row in legacy:
+        conn.execute(
+            "INSERT INTO votes(id, poll_id, option_label) VALUES(?, ?, ?)",
+            (row["id"], row["poll_id"],
+             label_by_id.get(str(row["option_id"]), str(row["option_id"]))),
+        )
+    conn.execute("DROP TABLE votes_legacy")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_poll ON votes(poll_id)")
 
 
 # --------------------------------------------------------------------------- #
@@ -497,6 +672,92 @@ def set_queue_threshold(db: sqlite3.Connection, value: Any) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Atraso / batching configuravel dos resultados (anti-inferencia)
+# --------------------------------------------------------------------------- #
+def get_results_delay_minutes(db: sqlite3.Connection) -> int:
+    """Janela PUBLICA de divulgacao em minutos (0 = usa o atraso em segundos)."""
+    raw = get_setting(
+        db, RESULTS_DELAY_MINUTES_SETTING, str(RESULTS_DELAY_MINUTES_DEFAULT)
+    )
+    try:
+        minutes = int(str(raw).strip())
+    except (TypeError, ValueError):
+        minutes = RESULTS_DELAY_MINUTES_DEFAULT
+    return max(0, min(1440, minutes))
+
+
+def set_results_delay_minutes(db: sqlite3.Connection, value: Any) -> int:
+    """Define a janela em minutos (0..1440). Levanta ``ValueError`` se invalida."""
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_minutes")
+    if minutes < 0 or minutes > 1440:
+        raise ValueError("minutes_out_of_range")
+    set_setting(db, RESULTS_DELAY_MINUTES_SETTING, minutes)
+    return minutes
+
+
+def effective_results_delay_seconds(db: sqlite3.Connection) -> int:
+    """Atraso efetivo em SEGUNDOS usado por ``/api/results``.
+
+    Quando ``results_delay_minutes`` > 0, a divulgacao publica e agrupada em
+    janelas de N minutos (batching anti-inferencia). Caso contrario, mantem-se o
+    atraso classico em segundos (``RESULTS_DELAY_SECONDS``).
+    """
+    minutes = get_results_delay_minutes(db)
+    return minutes * 60 if minutes > 0 else RESULTS_DELAY_SECONDS
+
+
+# --------------------------------------------------------------------------- #
+# Log de auditoria (eventos criticos do painel)
+# --------------------------------------------------------------------------- #
+def ensure_audit_logs_table(db: sqlite3.Connection) -> None:
+    """Garante a existencia da tabela ``audit_logs`` (bancos antigos/restaurados)."""
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            event      TEXT NOT NULL,
+            detail     TEXT NOT NULL DEFAULT '',
+            poll_id    INTEGER,
+            actor_ip   TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def write_audit_log(
+    db: sqlite3.Connection,
+    event: str,
+    detail: str = "",
+    poll_id: Optional[int] = None,
+    actor_ip: Optional[str] = None,
+) -> None:
+    """Grava um evento de auditoria (nunca dados sensiveis nem vinculo voto-votante)."""
+    ensure_audit_logs_table(db)
+    db.execute(
+        "INSERT INTO audit_logs(event, detail, poll_id, actor_ip, created_at) "
+        "VALUES(?, ?, ?, ?, ?)",
+        (str(event)[:60], str(detail)[:500], poll_id, actor_ip, now_iso()),
+    )
+    db.commit()
+
+
+def list_audit_logs(db: sqlite3.Connection, limit: int = AUDIT_LOG_LIMIT_DEFAULT) -> list[dict]:
+    """Lista os eventos mais recentes do log de auditoria (ordem decrescente)."""
+    ensure_audit_logs_table(db)
+    limit = max(1, min(AUDIT_LOG_LIMIT_MAX, int(limit)))
+    rows = db.execute(
+        "SELECT id, event, detail, poll_id, actor_ip, created_at "
+        "FROM audit_logs ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# --------------------------------------------------------------------------- #
 # Verificacao secundaria da purga (Device Token ou PIN dedicado)
 # --------------------------------------------------------------------------- #
 def get_purge_pin(db: sqlite3.Connection) -> str:
@@ -534,6 +795,17 @@ def get_pairing_pin(db: sqlite3.Connection) -> str:
 def generate_pairing_pin() -> str:
     """Gera um PIN numerico temporario de 6 digitos."""
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def generate_closure_pin(length: int = CLOSURE_PIN_MAX_LEN) -> str:
+    """Gera um PIN numerico de encerramento (default 6 digitos, min. 4).
+
+    O PIN e sorteado no inicio do plebiscito e exibido SOMENTE no painel
+    administrativo. Encerrar o plebiscito (``/api/admin/close``) exige este
+    codigo, evitando que um operador encerre a votacao por engano/sozinho.
+    """
+    digits = max(CLOSURE_PIN_MIN_LEN, min(CLOSURE_PIN_MAX_LEN, int(length)))
+    return "".join(str(secrets.randbelow(10)) for _ in range(digits))
 
 
 def set_pairing_pin(db: sqlite3.Connection, pin: Any) -> str:
@@ -631,18 +903,71 @@ def get_open_poll(db: sqlite3.Connection) -> Optional[dict]:
     return poll
 
 
-def tally_votes(
-    db: sqlite3.Connection, poll_id: int, cutoff_iso: Optional[str] = None
+def tally_votes(db: sqlite3.Connection, poll_id: int) -> dict:
+    """Conta votos por OPTION_LABEL (a tabela `votes` nao guarda option_id).
+
+    O voto e armazenado apenas como rotulo textual da opcao escolhida; nao ha
+    carimbo de tempo nem identificacao do votante. Nao existe, portanto,
+    qualquer filtro temporal aqui: o atraso controlado dos resultados e
+    aplicado exclusivamente na divulgacao PUBLICA (`/api/results`).
+    """
+    rows = db.execute(
+        "SELECT option_label, COUNT(*) AS total FROM votes "
+        "WHERE poll_id = ? GROUP BY option_label",
+        (poll_id,),
+    ).fetchall()
+    return {r["option_label"]: r["total"] for r in rows}
+
+
+def _revealable_vote_count(
+    db: sqlite3.Connection, poll: dict, cutoff_iso: Optional[str]
+) -> int:
+    """Quantos votos podem ser divulgados PUBLICAMENTE agora.
+
+    Combina duas fontes que NAO identificam o voto nem o votante:
+      * o plebiscito ja FECHADO -> revela 100% dos votos;
+      * o plebiscito ABERTO -> revela apenas os votos mais antigos que a
+        janela de carencia, estimada pela quantidade de check-ins cujo
+        ``voted_at`` ja e anterior ao cutoff (tabela `voters`, que registra
+        apenas QUEM compareceu e QUANDO - nunca o voto).
+
+    Desta forma o painel publico nao consegue associar o voto recem-cast ao
+    votante que acabou de se credenciar, preservando o sigilo.
+    """
+    total = db.execute(
+        "SELECT COUNT(*) AS c FROM votes WHERE poll_id = ?", (poll["id"],)
+    ).fetchone()["c"]
+    if total == 0:
+        return 0
+    if poll.get("status") == POLL_STATUS_CLOSED:
+        return total
+    if cutoff_iso is None:
+        return total
+    checked_in = db.execute(
+        "SELECT COUNT(*) AS c FROM voters WHERE voted_at <= ?", (cutoff_iso,)
+    ).fetchone()["c"]
+    return max(0, min(int(checked_in), int(total)))
+
+
+def tally_visible_votes(
+    db: sqlite3.Connection, poll: dict, cutoff_iso: Optional[str]
 ) -> dict:
-    """Conta votos por opcao. Se cutoff_iso for dado, so conta votos <= cutoff."""
-    params: list[Any] = [poll_id]
-    sql = "SELECT option_id, COUNT(*) AS total FROM votes WHERE poll_id = ?"
-    if cutoff_iso is not None:
-        sql += " AND created_at <= ?"
-        params.append(cutoff_iso)
-    sql += " GROUP BY option_id"
-    rows = db.execute(sql, params).fetchall()
-    return {r["option_id"]: r["total"] for r in rows}
+    """Contagem PUBLICA (com atraso controlado) por option_label.
+
+    Pega os N votos mais antigos (`N = _revealable_vote_count`) - N e derivado
+    da carencia, nunca de um vinculo votante->voto.
+    """
+    limit = _revealable_vote_count(db, poll, cutoff_iso)
+    if limit <= 0:
+        return {}
+    rows = db.execute(
+        "SELECT option_label FROM votes WHERE poll_id = ? ORDER BY id LIMIT ?",
+        (poll["id"], limit),
+    ).fetchall()
+    counts: dict[str, int] = {}
+    for r in rows:
+        counts[r["option_label"]] = counts.get(r["option_label"], 0) + 1
+    return counts
 
 
 def clear_voters(db: sqlite3.Connection) -> None:
@@ -651,15 +976,19 @@ def clear_voters(db: sqlite3.Connection) -> None:
 
 
 def votes_per_option(poll: dict, counts: dict) -> list[dict]:
-    """Monta a lista de opcoes com contagem (garante ordem de declaracao)."""
+    """Monta a lista de opcoes com contagem (garante ordem de declaracao).
+
+    Os votos sao agregados por LABEL (a tabela `votes` guarda apenas o rotulo
+    textual e nenhum id de opcao).
+    """
     result = []
     for opt in poll["options"]:
-        opt_id = opt.get("id")
+        label = opt.get("label", "")
         result.append(
             {
-                "id": opt_id,
-                "label": opt.get("label", ""),
-                "count": int(counts.get(opt_id, 0)),
+                "id": opt.get("id"),
+                "label": label,
+                "count": int(counts.get(label, 0)),
             }
         )
     return result
@@ -705,22 +1034,178 @@ def total_voters_for_poll(
     return count_registered_voters(db)
 
 
+def _sha256_hex(payload: str) -> str:
+    """Digest SHA-256 (hex) sobre o payload, prefixado pelo segredo da app."""
+    material = (INTEGRITY_SECRET + "\x1f" + payload).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def _integrity_canonical_payload(db: sqlite3.Connection, poll: dict) -> str:
+    """Serializacao CANONICA e determinista do estado de um plebiscito.
+
+    Inclui os metadados do plebiscito e TODOS os votos anonimos na ordem de
+    insercao (id|poll_id|option_label). Qualquer mudanca em pergunta, opcoes,
+    timestamps, status ou em QUALQUER voto altera o digest resultante.
+    """
+    votes = db.execute(
+        "SELECT id, poll_id, option_label FROM votes WHERE poll_id = ? "
+        "ORDER BY id",
+        (poll["id"],),
+    ).fetchall()
+    vote_lines = ";".join(
+        f"{v['id']}|{v['poll_id']}|{v['option_label']}" for v in votes
+    )
+    meta = "|".join(
+        [
+            f"id={poll['id']}",
+            f"question={poll['question']}",
+            "options=" + json.dumps(
+                poll.get("options") or [], ensure_ascii=False, sort_keys=True
+            ),
+            f"status={poll.get('status') or ''}",
+            f"created_at={poll.get('created_at') or ''}",
+            f"closed_at={poll.get('closed_at') or ''}",
+            f"votes={len(votes)}",
+        ]
+    )
+    return f"{INTEGRITY_ALGORITHM}\n{meta}\n--votes--\n{vote_lines}"
+
+
+def compute_poll_integrity_hash(
+    db: sqlite3.Connection, poll_id: int
+) -> Optional[str]:
+    """Calcula (sem gravar) o digest SHA-256 do estado atual do plebiscito."""
+    poll = get_poll(db, poll_id)
+    if poll is None:
+        return None
+    return _sha256_hex(_integrity_canonical_payload(db, poll))
+
+
+def seal_poll_integrity(db: sqlite3.Connection, poll_id: int) -> Optional[str]:
+    """Sela o plebiscito gravando o digest SHA-256 em ``polls.integrity_hash``.
+
+    Deve ser chamado DEPOIS do fechamento (``status='closed'`` e
+    ``closed_at`` preenchidos) e com todos os votos ja persistidos.
+    """
+    digest = compute_poll_integrity_hash(db, poll_id)
+    if digest is None:
+        return None
+    db.execute(
+        "UPDATE polls SET integrity_hash = ?, integrity_algorithm = ? "
+        "WHERE id = ?",
+        (digest, INTEGRITY_ALGORITHM, poll_id),
+    )
+    return digest
+
+
+def verify_poll_integrity(db: sqlite3.Connection, poll_id: int) -> dict:
+    """Verifica se o estado atual do plebiscito confere com o digest gravado.
+
+    Retorna um dicionario com ``valid`` True/False. Se o banco foi alterado
+    externamente (sqlite3, DB Browser, script) DEPOIS do fechamento, o digest
+    recalculado diverge do selado e ``valid`` e False -> aduteracao detectada.
+    """
+    row = db.execute(
+        "SELECT integrity_hash, integrity_algorithm FROM polls WHERE id = ?",
+        (poll_id,),
+    ).fetchone()
+    if row is None:
+        return {
+            "ok": False, "valid": False, "reason": "unknown_poll",
+            "poll_id": poll_id, "algorithm": INTEGRITY_ALGORITHM,
+            "expected": None, "actual": None,
+        }
+
+    stored = row["integrity_hash"]
+    algorithm = row["integrity_algorithm"] or INTEGRITY_ALGORITHM
+    actual = compute_poll_integrity_hash(db, poll_id)
+
+    if not stored:
+        return {
+            "ok": True, "valid": False, "reason": "not_sealed",
+            "poll_id": poll_id, "algorithm": algorithm,
+            "expected": None, "actual": actual, "sealed": False,
+        }
+
+    valid = bool(actual) and _token_equal(str(stored), str(actual))
+    return {
+        "ok": True,
+        "valid": valid,
+        "reason": "ok" if valid else "checksum_mismatch",
+        "poll_id": poll_id,
+        "algorithm": algorithm,
+        "expected": stored,
+        "actual": actual,
+        "sealed": True,
+    }
+
+
+def poll_integrity_report(
+    db: sqlite3.Connection, poll: Optional[dict]
+) -> Optional[dict]:
+    """Bloco de integridade para o relatorio/Ata (hash + validacao)."""
+    if poll is None:
+        return None
+    result = verify_poll_integrity(db, poll["id"])
+    polls_row = db.execute(
+        "SELECT integrity_hash FROM polls WHERE id = ?", (poll["id"],)
+    ).fetchone()
+    stored = polls_row["integrity_hash"] if polls_row else None
+    return {
+        "algorithm": result["algorithm"],
+        "hash": stored or result["actual"],
+        "computed": result["actual"],
+        "sealed": bool(stored),
+        "valid": result["valid"] if stored else None,
+        "reason": result["reason"],
+        "votes_hashed": db.execute(
+            "SELECT COUNT(*) AS c FROM votes WHERE poll_id = ?", (poll["id"],)
+        ).fetchone()["c"],
+    }
+
+
+def _business_rules(db: sqlite3.Connection) -> dict:
+    """Parametros de negocio usados nas declaracoes dos relatorios."""
+    return {
+        "checkin_cooldown": CHECKIN_COOLDOWN_SECONDS,
+        "results_delay": effective_results_delay_seconds(db),
+        "results_delay_seconds": RESULTS_DELAY_SECONDS,
+        "results_delay_minutes": get_results_delay_minutes(db),
+        "network_mode": NETWORK_MODE,
+        "single_token_policy": True,
+        "pairing_enabled": bool(get_pairing_pin(db)),
+    }
+
+
+
 def report_payload(db: sqlite3.Connection) -> dict:
     """Agrega o resultado final do plebiscito ativo/encerrado para a Ata.
 
     Inclui: pergunta, opcoes com contagem e percentual, total de votos,
-    timestamps de abertura/encerramento e o total de votantes unicos.
+    timestamps de abertura/encerramento, o total de votantes unicos, o digest
+    de integridade (SHA-256) e os parametros de negocio/declaracao de sigilo.
     """
     poll_id = get_active_poll_id(db)
     poll = get_poll(db, poll_id) if poll_id is not None else None
 
+    rules = _business_rules(db)
+    checkins = total_voters_for_poll(db, poll)
     payload: dict[str, Any] = {
         "ok": True,
         "factory_name": FACTORY_NAME,
         "title": REPORT_TITLE,
         "generated_at": now_iso(),
-        "total_voters_registered": total_voters_for_poll(db, poll),
+        "total_voters_registered": checkins,
+        "rules": rules,
+        "checkin_cooldown": rules["checkin_cooldown"],
+        "results_delay": rules["results_delay"],
+        "results_delay_minutes": rules["results_delay_minutes"],
+        "network_isolation": rules["network_mode"],
+        "pairing_enabled": rules["pairing_enabled"],
+        "single_token_policy": rules["single_token_policy"],
+        "integrity": None,
         "poll": None,
+        "reconciliation": None,
     }
     if poll is None:
         return payload
@@ -739,6 +1224,26 @@ def report_payload(db: sqlite3.Connection) -> dict:
         "closed_at": poll["closed_at"],
         "options": options,
         "total_votes": total,
+    }
+    payload["integrity"] = poll_integrity_report(db, poll)
+    # Divergencia check-ins x votos (auditoria de comparecimento).
+    payload["checkins_vs_votes"] = {
+        "checkins": checkins,
+        "votes": total,
+        "variance": checkins - total,
+    }
+    # Conciliacao de fechamento: cada credencial (check-in) deve corresponder a
+    # um voto registrado OU a um token ainda na fila (votante aguardando cabine).
+    #   Check-ins Totais == Votos Apurados + Tokens Ativos
+    active_tokens = get_voting_tokens(db)
+    expected = total + active_tokens
+    payload["reconciliation"] = {
+        "checkins_total": checkins,
+        "votes_cast": total,
+        "active_tokens": active_tokens,
+        "expected_checkins": expected,
+        "difference": checkins - expected,
+        "balanced": checkins == expected,
     }
     return payload
 
@@ -994,7 +1499,13 @@ def cabine_page():
 @app.get("/painel-tv")
 def painel_tv_page():
     """Painel publico de resultados (TV)."""
-    return render_template("painel_tv.html", results_delay=RESULTS_DELAY_SECONDS)
+    db = get_db()
+    return render_template(
+        "painel_tv.html",
+        results_delay=effective_results_delay_seconds(db),
+        results_delay_minutes=get_results_delay_minutes(db),
+        network_mode=NETWORK_MODE,
+    )
 
 
 @app.get("/admin")
@@ -1187,27 +1698,47 @@ def api_booth_register():
         ).fetchone()
 
         rotate = False
+        paired_with_pin = False
         if existing is None:
             # Cabine nova: exige o PIN quando o pareamento esta ativo.
             if required_pin and not _pin_matches(provided_pin, required_pin):
+                write_audit_log(
+                    db, "booth_pair_denied",
+                    f"Pareamento negado (PIN ausente/invalido) - cabine {booth_id}",
+                    actor_ip=client_ip,
+                )
                 return _user_error(
                     "pairing_required", 403,
                     detail="Informe o PIN de pareamento exibido no painel administrativo.",
                 )
+            paired_with_pin = bool(required_pin)
         else:
             stored = existing["pairing_token"]
             if stored and provided_token and _token_equal(provided_token, stored):
                 pass  # token valido -> segue
             elif required_pin and _pin_matches(provided_pin, required_pin):
                 rotate = True  # re-pareamento autorizado pelo PIN -> novo token
+                paired_with_pin = True
             elif not stored:
                 pass  # registro legado (sem token) -> segue
             else:
+                write_audit_log(
+                    db, "booth_pair_denied",
+                    f"Pareamento negado (cabine {booth_id} ja pareada)",
+                    actor_ip=client_ip,
+                )
                 return _user_error(
                     "pairing_required", 403,
                     detail="Cabine ja pareada. Remova-a no painel para parear novamente.",
                 )
         booth = register_booth(db, booth_id, client_ip, rotate=rotate)
+        if booth is not None and paired_with_pin:
+            write_audit_log(
+                db, "booth_pair",
+                f"Cabine {booth.get('label')} ({booth_id}) pareada"
+                + (" (token rotacionado)" if rotate else " (nova)"),
+                actor_ip=client_ip,
+            )
 
     if booth is None:
         return _user_error("invalid_booth_id", 400)
@@ -1302,8 +1833,10 @@ def api_vote():
         if poll is None:
             return jsonify({"ok": False, "status": "no_poll"}), 409
 
-        valid_ids = {o.get("id") for o in poll["options"]}
-        if option_id not in valid_ids:
+        valid = {
+            str(o.get("id")): str(o.get("label", "")) for o in poll["options"]
+        }
+        if option_id not in valid:
             return _user_error("invalid_option", 400)
 
         tokens = get_voting_tokens(db)
@@ -1314,9 +1847,11 @@ def api_vote():
                  "detail": "Nenhum token de votacao disponivel."}
             ), 409
 
+        # Grava APENAS (poll_id, option_label): sem cracha, sem timestamp e
+        # sem qualquer referencia ao votante -> voto absolutamente anonimo.
         db.execute(
-            "INSERT INTO votes(poll_id, option_id, created_at) VALUES(?, ?, ?)",
-            (poll["id"], option_id, now_iso()),
+            "INSERT INTO votes(poll_id, option_label) VALUES(?, ?)",
+            (poll["id"], valid[option_id]),
         )
         remaining = set_voting_tokens(db, tokens - 1)
         db.commit()
@@ -1335,32 +1870,37 @@ def api_vote():
 def api_results():
     """Resultados publicos com ATRASO CONTROLADO.
 
-    Somente votos mais antigos que RESULTS_DELAY_SECONDS entram na contagem
-    exibida. Isso evita correlacionar em tempo real quem acabou de votar,
-    preservando o sigilo do voto e dando transparencia ao processo.
+    Somente os votos mais antigos que a janela de carencia aparecem. A janela
+    e estimada pelos check-ins cujo ``voted_at`` ja passou do cutoff (tabela
+    ``voters``) - nunca por um vinculo votante->voto (que nao existe). Isso
+    evita correlacionar em tempo real quem acabou de votar, preservando o
+    sigilo do voto e dando transparencia ao processo.
     """
     db = get_db()
     poll_id = get_active_poll_id(db)
     poll = get_poll(db, poll_id) if poll_id is not None else None
+    delay_seconds = effective_results_delay_seconds(db)
+    delay_minutes = get_results_delay_minutes(db)
 
     if poll is None:
         return jsonify(
             {"ok": True, "status": "no_poll", "question": None, "options": [],
              "total": 0, "voting_tokens": get_voting_tokens(db),
-             "results_delay": RESULTS_DELAY_SECONDS, "generated_at": now_iso()}
+             "results_delay": delay_seconds, "results_delay_minutes": delay_minutes,
+             "network_isolation": NETWORK_MODE, "generated_at": now_iso()}
         )
 
     cutoff = None
-    if RESULTS_DELAY_SECONDS > 0:
+    if delay_seconds > 0 and poll["status"] != POLL_STATUS_CLOSED:
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(seconds=RESULTS_DELAY_SECONDS)
+            datetime.now(timezone.utc) - timedelta(seconds=delay_seconds)
         ).isoformat(timespec="seconds")
 
-    counts = tally_votes(db, poll["id"], cutoff_iso=cutoff)
+    # Contagem PUBLICA (respeita a carencia) x contagem TOTAL (sigilosa).
+    counts = tally_visible_votes(db, poll, cutoff)
     options = votes_per_option(poll, counts)
     total = sum(o["count"] for o in options)
 
-    # Quantos votos ainda estao "em carencia" (nao exibidos).
     all_counts = tally_votes(db, poll["id"])
     total_actual = sum(all_counts.values())
 
@@ -1374,7 +1914,9 @@ def api_results():
             "total": total,
             "total_pending_display": max(0, total_actual - total),
             "voting_tokens": get_voting_tokens(db),
-            "results_delay": RESULTS_DELAY_SECONDS,
+            "results_delay": delay_seconds,
+            "results_delay_minutes": delay_minutes,
+            "network_isolation": NETWORK_MODE,
             "generated_at": now_iso(),
         }
     )
@@ -1392,7 +1934,9 @@ def api_health():
             "voting_tokens": get_voting_tokens(db),
             "queue_warning_threshold": get_queue_threshold(db),
             "cooldown": CHECKIN_COOLDOWN_SECONDS,
-            "results_delay": RESULTS_DELAY_SECONDS,
+            "results_delay": effective_results_delay_seconds(db),
+            "results_delay_minutes": get_results_delay_minutes(db),
+            "network_isolation": NETWORK_MODE,
         }
     )
 
@@ -1437,10 +1981,16 @@ def _admin_state(db: sqlite3.Connection) -> dict:
     poll = get_poll(db, poll_id) if poll_id is not None else None
 
     voters = db.execute("SELECT COUNT(*) AS c FROM voters").fetchone()["c"]
+    tokens = get_voting_tokens(db)
     poll_payload = None
+    closure_pin = None
     if poll is not None:
         counts = tally_votes(db, poll["id"])
         options = votes_per_option(poll, counts)
+        pin_row = db.execute(
+            "SELECT closure_pin FROM polls WHERE id = ?", (poll["id"],)
+        ).fetchone()
+        closure_pin = pin_row["closure_pin"] if pin_row else None
         poll_payload = {
             "id": poll["id"],
             "question": poll["question"],
@@ -1449,20 +1999,41 @@ def _admin_state(db: sqlite3.Connection) -> dict:
             "closed_at": poll["closed_at"],
             "options": options,
             "total_votes": sum(o["count"] for o in options),
+            "closure_pin": closure_pin,
         }
 
     pairing_pin = get_pairing_pin(db)
+    if poll is not None:
+        # Conciliacao previa (mesma regra da Ata): check-ins x votos + tokens.
+        votes_total = poll_payload["total_votes"] if poll_payload else 0
+        checkins = total_voters_for_poll(db, poll)
+        reconciliation = {
+            "checkins_total": checkins,
+            "votes_cast": votes_total,
+            "active_tokens": tokens,
+            "expected_checkins": votes_total + tokens,
+            "difference": checkins - (votes_total + tokens),
+            "balanced": checkins == (votes_total + tokens),
+        }
+    else:
+        reconciliation = None
+
     return {
         "ok": True,
         "poll": poll_payload,
-        "voting_tokens": get_voting_tokens(db),
+        "voting_tokens": tokens,
         "voters_checked_in": voters,
         "booths": list_booths(db),
         "pairing_pin": pairing_pin,
         "pairing_enabled": bool(pairing_pin),
         "queue_warning_threshold": get_queue_threshold(db),
         "cooldown": CHECKIN_COOLDOWN_SECONDS,
-        "results_delay": RESULTS_DELAY_SECONDS,
+        "results_delay": effective_results_delay_seconds(db),
+        "results_delay_minutes": get_results_delay_minutes(db),
+        "results_delay_seconds": RESULTS_DELAY_SECONDS,
+        "network_isolation": NETWORK_MODE,
+        "closure_pin": closure_pin,
+        "reconciliation": reconciliation,
         "server_time": now_iso(),
     }
 
@@ -1517,6 +2088,7 @@ def history_payload(db: sqlite3.Connection) -> dict:
                 "options": options,
                 "total_votes": total,
                 "voters": _preserved_voters(db, row["id"]),
+                "integrity": poll_integrity_report(db, {"id": row["id"]}),
             }
         )
 
@@ -1539,13 +2111,28 @@ def history_report_payload(db: sqlite3.Connection) -> dict:
         "open": sum(1 for e in elections if e["status"] == POLL_STATUS_OPEN),
         "total_votes": sum(e["total_votes"] for e in elections),
         "total_voters": sum((e["voters"] or 0) for e in elections),
+        # Integridade: quantos selados conferem / divergem / nao selados.
+        "integrity_valid": sum(
+            1 for e in elections
+            if e.get("integrity") and e["integrity"].get("valid") is True
+        ),
+        "integrity_invalid": sum(
+            1 for e in elections
+            if e.get("integrity") and e["integrity"].get("valid") is False
+        ),
+        "integrity_unsealed": sum(
+            1 for e in elections
+            if not e.get("integrity") or e["integrity"].get("sealed") is False
+        ),
     }
+    stats["checkins_vs_votes"] = stats["total_voters"] - stats["total_votes"]
     return {
         "ok": True,
         "factory_name": FACTORY_NAME,
         "title": "Relatório Geral de Histórico",
         "generated_at": now_iso(),
         "stats": stats,
+        "rules": _business_rules(db),
         "elections": elections,
     }
 
@@ -1575,6 +2162,7 @@ def booth_audit_payload(db: sqlite3.Connection) -> dict:
         "booths": booths,
         "stats": stats,
         "pairing_enabled": bool(pairing_pin),
+        "network_mode": NETWORK_MODE,
     }
 
 
@@ -1587,6 +2175,7 @@ def api_admin_state():
 
 
 @app.post("/api/admin/poll")
+@app.post("/api/admin/start")
 @require_device_token
 def api_admin_start_poll():
     """Cria e inicia um novo plebiscito dinamico.
@@ -1598,7 +2187,9 @@ def api_admin_start_poll():
     Iniciar um novo plebiscito:
       * fecha a poll anterior (se aberta);
       * limpa a lista de crachas (todos podem votar de novo);
-      * zera a fila de tokens de votacao.
+      * zera a fila de tokens de votacao;
+      * sorteia um PIN de encerramento (4-6 digitos) devolvido apenas ao
+        operador - exigido depois por ``POST /api/admin/close``.
     """
     data = request.get_json(silent=True) or {}
     question = str(data.get("question", "")).strip()
@@ -1618,23 +2209,31 @@ def api_admin_start_poll():
         if previous_id is not None:
             # Preserva a contagem de votantes do plebiscito anterior (Ata).
             preserve_closed_voters(db, previous_id)
-            db.execute(
+            cur = db.execute(
                 "UPDATE polls SET status = ?, closed_at = ? "
                 "WHERE id = ? AND status = ?",
                 (POLL_STATUS_CLOSED, now_iso(), previous_id, POLL_STATUS_OPEN),
             )
+            # Sela a integridade (SHA-256) apenas na transicao open -> closed.
+            if cur.rowcount:
+                seal_poll_integrity(db, previous_id)
 
         cur = db.execute(
-            "INSERT INTO polls(question, options, status, created_at) "
-            "VALUES(?, ?, ?, ?)",
+            "INSERT INTO polls(question, options, status, created_at, closure_pin) "
+            "VALUES(?, ?, ?, ?, ?)",
             (question, json.dumps(options, ensure_ascii=False),
-             POLL_STATUS_OPEN, now_iso()),
+             POLL_STATUS_OPEN, now_iso(), generate_closure_pin()),
         )
         new_id = cur.lastrowid
 
         clear_voters(db)
         set_setting(db, "active_poll_id", new_id)
         set_voting_tokens(db, 0)
+        write_audit_log(
+            db, "poll_start",
+            f"Plebiscito #{new_id} iniciado: {question[:120]}",
+            poll_id=new_id, actor_ip=_client_ip(),
+        )
         db.commit()
         state = _admin_state(db)
         logger.info(
@@ -1665,6 +2264,12 @@ def api_admin_reset():
             return _user_error("no_active_poll", 409)
 
         db.execute("DELETE FROM votes WHERE poll_id = ?", (poll_id,))
+        # Estado alterado: o selo SHA-256 anterior deixa de valer.
+        db.execute(
+            "UPDATE polls SET integrity_hash = NULL, integrity_algorithm = NULL "
+            "WHERE id = ?",
+            (poll_id,),
+        )
         if clear:
             clear_voters(db)
         set_voting_tokens(db, 0)
@@ -1682,12 +2287,42 @@ def api_admin_reset():
 @app.post("/api/admin/close")
 @require_device_token
 def api_admin_close():
-    """Encerra o plebiscito ativo (resultados permanecem consultaveis)."""
+    """Encerra o plebiscito ativo (resultados permanecem consultaveis).
+
+    Exige o PIN de encerramento sorteado no inicio do plebiscito. O PIN pode
+    ser informado no body JSON (``{"closure_pin": "123456"}``), no header
+    ``X-Closure-Pin`` ou na query string (``?closure_pin=123456``). Ausente ou
+    incorreto responde 403 (``invalid_closure_pin``) e a tentativa negada fica
+    registrada no log de auditoria. Bancos antigos (PIN NULL) encerram sem PIN.
+    """
+    data = request.get_json(silent=True) or {}
+    provided = (
+        str(data.get("closure_pin", "")).strip()
+        or str(request.headers.get("X-Closure-Pin", "")).strip()
+        or str(request.args.get("closure_pin", "")).strip()
+    )
+
     with _DB_LOCK:
         db = get_db()
         poll_id = get_active_poll_id(db)
         if poll_id is None:
             return _user_error("no_active_poll", 409)
+
+        pin_row = db.execute(
+            "SELECT closure_pin FROM polls WHERE id = ?", (poll_id,)
+        ).fetchone()
+        required = (pin_row["closure_pin"] if pin_row else None) or ""
+        if required and not _pin_matches(provided, required):
+            write_audit_log(
+                db, "poll_close_denied",
+                f"PIN de encerramento invalido no plebiscito #{poll_id}",
+                poll_id=poll_id, actor_ip=_client_ip(),
+            )
+            logger.warning(
+                "Encerramento do plebiscito #%s negado (PIN invalido) - IP %s",
+                poll_id, _client_ip() or "desconhecido",
+            )
+            return _user_error("invalid_closure_pin", 403)
 
         # Preserva a contagem de votantes ANTES de limpar os crachas (Ata).
         preserve_closed_voters(db, poll_id)
@@ -1695,8 +2330,15 @@ def api_admin_close():
             "UPDATE polls SET status = ?, closed_at = ? WHERE id = ?",
             (POLL_STATUS_CLOSED, now_iso(), poll_id),
         )
+        # Sela a integridade DEPOIS do fechamento e com todos os votos ja
+        # persistidos: grava o digest SHA-256 do estado final para auditoria.
+        seal_poll_integrity(db, poll_id)
         clear_voters(db)
         set_voting_tokens(db, 0)
+        write_audit_log(
+            db, "poll_close", f"Plebiscito #{poll_id} encerrado",
+            poll_id=poll_id, actor_ip=_client_ip(),
+        )
         db.commit()
         state = _admin_state(db)
         logger.info("Plebiscito #%s encerrado.", poll_id)
@@ -1765,6 +2407,8 @@ def api_admin_pairing():
             detail = "PIN de pareamento atualizado." if pin else \
                 "Pareamento de cabines desativado."
         state = _admin_state(db)
+        write_audit_log(db, "pairing_change", detail, actor_ip=_client_ip())
+        db.commit()
         logger.info("Pareamento de cabines: %s", detail)
     state["detail"] = detail
     return jsonify(state)
@@ -1777,9 +2421,12 @@ def api_admin_remove_booth(booth_id: str):
     with _DB_LOCK:
         db = get_db()
         cur = db.execute("DELETE FROM booths WHERE booth_id = ?", (booth_id,))
-        db.commit()
         if cur.rowcount == 0:
+            db.commit()
             return _user_error("unknown_booth", 404)
+        write_audit_log(db, "booth_remove", f"Cabine removida: {booth_id}",
+                        actor_ip=_client_ip())
+        db.commit()
         state = _admin_state(db)
         logger.info("Cabine removida (deregistro): %s", booth_id)
     state["detail"] = "Cabine removida. O dispositivo precisara parear novamente."
@@ -1850,6 +2497,11 @@ def api_admin_db_purge():
         or request.args.get("secondary", "")
     ).strip()
     if not secondary_verified(db, secondary):
+        write_audit_log(
+            db, "purge_denied",
+            f"Purga recusada (verificacao secundaria invalida) - scope={scope}",
+            actor_ip=_client_ip(),
+        )
         logger.warning(
             "Purga recusada (403): verificacao secundaria invalida - scope=%s IP %s",
             scope, _client_ip() or "desconhecido",
@@ -1881,6 +2533,18 @@ def api_admin_db_purge():
                 )
             except sqlite3.Error:
                 pass  # tabela sqlite_sequence ausente em bancos sem AUTOINCREMENT
+        else:
+            # scope == 'logs': os plebiscitos permanecem, mas os votos foram
+            # apagados -> o selo SHA-256 anterior deixa de valer para todos.
+            db.execute(
+                "UPDATE polls SET integrity_hash = NULL, integrity_algorithm = NULL"
+            )
+        write_audit_log(
+            db, "purge",
+            f"Purga scope={scope}: {removed_votes} voto(s), {removed_voters} check-in(s), "
+            f"{removed_polls if scope == 'all' else 0} plebiscito(s)",
+            actor_ip=_client_ip(),
+        )
         db.commit()
 
         state = _admin_state(db)
@@ -1942,6 +2606,12 @@ def api_admin_delete_poll(poll_id: int):
             set_setting(db, "active_poll_id", "")
             set_voting_tokens(db, 0)
             clear_voters(db)
+        write_audit_log(
+            db, "poll_delete",
+            f"Plebiscito #{poll_id} excluido ({removed_votes} voto(s))"
+            + (" - era o ativo" if was_active else ""),
+            poll_id=poll_id, actor_ip=_client_ip(),
+        )
         db.commit()
 
         state = _admin_state(db)
@@ -2007,6 +2677,143 @@ def api_admin_queue_threshold():
         "queue_warning_threshold": value,
         "state": state,
         "detail": f"Limite de fila definido em {value}.",
+    })
+
+
+# --------------------------------------------------------------------------- #
+# API: Inspetor de banco de dados (SOMENTE LEITURA) + log de auditoria
+# --------------------------------------------------------------------------- #
+@app.get("/api/admin/db/inspect")
+@require_device_token
+def api_admin_db_inspect():
+    """Inspetor SOMENTE LEITURA das tabelas do banco.
+
+    Query: ``?table=<polls|voters|votes|booths|settings>`` (default ``polls``).
+    Devolve as colunas (``PRAGMA table_info``) e ate ``DB_INSPECT_ROW_LIMIT``
+    linhas de cada tabela (whitelist). A tabela ``votes`` e exibida no formato
+    ANONIMO ESTRITO - sem badge_id/voter_id/IP/carimbo de tempo - acompanhada de
+    uma nota de esquema que comprova a ausencia de vinculo votante->voto.
+    """
+    requested = (request.args.get("table") or "").strip().lower()
+    table = requested if requested in DB_INSPECT_TABLES else DB_INSPECT_TABLES[0]
+    db = get_db()
+
+    columns = [row["name"] for row in db.execute(f"PRAGMA table_info({table})")]
+    total = db.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()["c"]
+    rows = [
+        {column: row[column] for column in columns}
+        for row in db.execute(
+            f"SELECT * FROM {table} LIMIT ?", (DB_INSPECT_ROW_LIMIT,)
+        ).fetchall()
+    ]
+
+    payload: dict[str, Any] = {
+        "ok": True,
+        "table": table,
+        "tables": list(DB_INSPECT_TABLES),
+        "columns": columns,
+        "rows": rows,
+        "count": total,
+        "shown": len(rows),
+        "limit": DB_INSPECT_ROW_LIMIT,
+        "truncated": total > len(rows),
+        "read_only": True,
+    }
+    if table == "votes":
+        payload["anonymous"] = True
+        payload["schema_note"] = (
+            "Esquema ANONIMO estrito: a tabela guarda apenas (id, poll_id, "
+            "option_label). Nao existe badge_id, voter_id, IP nem carimbo de "
+            "tempo por voto - logo e impossivel correlacionar um votante a "
+            "sua escolha."
+        )
+    elif table == "polls":
+        payload["schema_note"] = (
+            "Cada plebiscito traz o PIN de encerramento (coluna closure_pin), "
+            "exigido por POST /api/admin/close."
+        )
+    elif table == "settings":
+        payload["schema_note"] = (
+            "Chaves de configuracao de runtime (fila de tokens, limite de "
+            "alerta, PINs de pareamento/purga e atraso de resultados)."
+        )
+    return jsonify(payload)
+
+
+@app.get("/api/admin/audit")
+@require_device_token
+def api_admin_audit():
+    """Lista os eventos recentes do log de auditoria (mais novo primeiro).
+
+    Query opcional: ``?limit=N`` (1..``AUDIT_LOG_LIMIT_MAX``, default 100).
+    """
+    db = get_db()
+    try:
+        limit = int(request.args.get("limit", AUDIT_LOG_LIMIT_DEFAULT))
+    except (TypeError, ValueError):
+        limit = AUDIT_LOG_LIMIT_DEFAULT
+    entries = list_audit_logs(db, limit)
+    return jsonify({
+        "ok": True,
+        "count": len(entries),
+        "limit": max(1, min(AUDIT_LOG_LIMIT_MAX, limit)),
+        "entries": entries,
+    })
+
+
+@app.route("/api/admin/settings/results-delay", methods=["GET", "POST"])
+@require_device_token
+def api_admin_results_delay():
+    """Le/define o atraso configuravel dos resultados (anti-inferencia).
+
+    GET  -> ``{"ok": true, "results_delay_minutes": N, ...}``
+    POST -> body ``{"minutes": N}`` (aliases: ``results_delay_minutes``/``value``);
+            ``0`` volta ao atraso classico em segundos (``RESULTS_DELAY_SECONDS``);
+            ``>0`` agrupa a divulgacao publica em janelas de N minutos.
+    """
+    db = get_db()
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "results_delay_minutes": get_results_delay_minutes(db),
+            "results_delay_seconds": RESULTS_DELAY_SECONDS,
+            "effective_results_delay": effective_results_delay_seconds(db),
+        })
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get("minutes")
+    if raw is None:
+        raw = data.get("results_delay_minutes")
+    if raw is None:
+        raw = data.get("value")
+    if raw is None:
+        return _user_error("minutes_required", 400,
+                           detail="Informe o campo 'minutes' (numero entre 0 e 1440).")
+
+    with _DB_LOCK:
+        try:
+            minutes = set_results_delay_minutes(db, raw)
+        except ValueError as exc:
+            return _user_error(str(exc), 400,
+                               detail="Informe um numero de minutos entre 0 e 1440.")
+        write_audit_log(db, "results_delay_set",
+                        f"Atraso de resultados definido em {minutes} min",
+                        actor_ip=_client_ip())
+        db.commit()
+        state = _admin_state(db)
+
+    effective = effective_results_delay_seconds(db)
+    logger.info("Atraso de resultados ajustado para %s min (IP %s).",
+                minutes, _client_ip() or "desconhecido")
+    return jsonify({
+        "ok": True,
+        "results_delay_minutes": minutes,
+        "results_delay_seconds": RESULTS_DELAY_SECONDS,
+        "effective_results_delay": effective,
+        "state": state,
+        "detail": (f"Resultados agrupados em janelas de {minutes} minuto(s)."
+                   if minutes else
+                   f"Resultados divulgados apos {effective}s (atraso padrao)."),
     })
 
 
@@ -2115,6 +2922,13 @@ def api_admin_backup_restore():
             probe.backup(db)  # sobrescreve o banco ativo com o conteudo do backup
             db.execute("UPDATE booths SET status = 'idle', busy_until = NULL")
             set_voting_tokens(db, 0)
+            # O backup pode ser de uma versao anterior sem audit_logs.
+            ensure_audit_logs_table(db)
+            write_audit_log(
+                db, "db_restore",
+                f"Banco restaurado de '{upload.filename}'",
+                actor_ip=_client_ip(),
+            )
             db.commit()
             state = _admin_state(db)
             history = history_payload(db)
@@ -2145,6 +2959,24 @@ def api_admin_report():
     """Relatorio oficial (JSON) com o resultado final agregado do plebiscito."""
     db = get_db()
     return jsonify(report_payload(db))
+
+
+@app.get("/api/admin/polls/<int:poll_id>/verify")
+@app.get("/api/admin/verify")
+@require_device_token
+def api_admin_verify(poll_id: Optional[int] = None):
+    """Verifica a integridade (SHA-256) de um plebiscito.
+
+    Sem ``poll_id`` na URL verifica o plebiscito ATIVO. Compara o digest
+    recalculado com o selo gravado em ``polls.integrity_hash`` no fechamento.
+    Uma divergencia (``valid=false``, ``reason=checksum_mismatch``) indica que
+    o banco foi alterado externamente DEPOIS do encerramento.
+    """
+    db = get_db()
+    target = poll_id if poll_id is not None else get_active_poll_id(db)
+    if target is None:
+        return _user_error("no_poll", 409)
+    return jsonify(verify_poll_integrity(db, target))
 
 
 @app.template_filter("fmt_dt")
@@ -2184,6 +3016,33 @@ def _admin_page_denied(label: str):
     )
 
 
+def _signatories_from_request() -> list[dict]:
+    """Le as linhas de assinatura dinamicas da Ata a partir da query string.
+
+    O painel envia listas paralelas (``sig_nome``, ``sig_cargo``, ``sig_doc``),
+    permitindo adicionar/remover signatarios dinamicamente. Linhas sem nome sao
+    ignoradas; se nenhuma sobrar, retorna a lista padrao (linhas em branco para
+    assinatura manual). Limita a ``MAX_SIGNATORIES`` entradas.
+    """
+    names = request.args.getlist("sig_nome")
+    roles = request.args.getlist("sig_cargo")
+    docs = request.args.getlist("sig_doc")
+
+    signatories: list[dict] = []
+    for idx, raw_name in enumerate(names):
+        name = (raw_name or "").strip()
+        if not name:
+            continue
+        role = roles[idx].strip() if idx < len(roles) else ""
+        doc = docs[idx].strip() if idx < len(docs) else ""
+        signatories.append(
+            {"name": name[:120], "role": role[:120], "doc": doc[:60]}
+        )
+        if len(signatories) >= MAX_SIGNATORIES:
+            break
+    return signatories or list(DEFAULT_SIGNATORIES)
+
+
 @app.get("/admin/relatorio")
 def admin_report_page():
     """Ata de fechamento em HTML/A4 pronta para impressao ou "Salvar como PDF".
@@ -2196,7 +3055,10 @@ def admin_report_page():
         return denied
     db = get_db()
     return render_template(
-        "relatorio.html", report=report_payload(db), token=_extract_token()
+        "relatorio.html",
+        report=report_payload(db),
+        signatories=_signatories_from_request(),
+        token=_extract_token(),
     )
 
 

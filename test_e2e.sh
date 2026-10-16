@@ -33,6 +33,8 @@ check() { # descricao, esperado, obtido
   else echo "  FAIL  $1 (esperado=$2 obtido=$3)"; fail=$((fail+1)); fi
 }
 jget() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)" 2>/dev/null; }
+# PIN de encerramento do plebiscito ativo (exigido por /api/admin/close).
+cpin() { curl -s -H "X-Device-Token: $TOKEN" "$BASE/api/admin/state" | jget 'd["closure_pin"] or ""'; }
 
 echo "== 1. Admin exige token =="
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/state")
@@ -94,7 +96,25 @@ resp=$(curl -s -X POST "$BASE/api/admin/reset" -H "X-Device-Token: $TOKEN" \
 echo "$resp" | grep -q '"total_votes":0'; check "reset zera votos" "0" "$?"
 echo "$resp" | grep -q '"voters_checked_in":0'; check "reset limpa crachas" "0" "$?"
 
-resp=$(curl -s -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN")
+CPIN=$(cpin)
+case "$CPIN" in
+  [0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9]) ok=1;; *) ok=0;;
+esac
+check "plebiscito expoe PIN de encerramento numerico" "1" "$ok"
+
+# Encerrar exige o PIN: sem PIN / com PIN errado -> 403 (e auditoria registra).
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN")
+check "close sem PIN -> 403" "403" "$code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/admin/close" \
+  -H "X-Device-Token: $TOKEN" -H 'X-Closure-Pin: 000000')
+check "close com PIN errado -> 403" "403" "$code"
+resp=$(curl -s -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"closure_pin":"999999"}')
+echo "$resp" | grep -q '\"error\":\"invalid_closure_pin\"'
+check "close com PIN invalido -> invalid_closure_pin" "0" "$?"
+
+resp=$(curl -s -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d "{\"closure_pin\":\"$CPIN\"}")
 echo "$resp" | grep -q '"status":"closed"'; check "close encerra poll" "0" "$?"
 
 resp=$(curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"BADGE-003"}')
@@ -157,8 +177,10 @@ curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"optio
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/report")
 check "report JSON sem token -> 401" "401" "$code"
 
-# Encerra o plebiscito e consulta o relatorio agregado.
-curl -s -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN" >/dev/null
+# Encerra o plebiscito (exige o PIN de encerramento) e consulta o relatorio.
+CPIN=$(cpin)
+curl -s -X POST "$BASE/api/admin/close" -H "X-Device-Token: $TOKEN" \
+  -H 'Content-Type: application/json' -d "{\"closure_pin\":\"$CPIN\"}" >/dev/null
 resp=$(curl -s -H "X-Device-Token: $TOKEN" "$BASE/api/admin/report")
 check "report traz a pergunta" "Aprova a Ata?" \
   "$(printf '%s' "$resp" | jget 'd["poll"]["question"]')"

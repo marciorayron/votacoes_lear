@@ -31,6 +31,8 @@ check() { # descricao, esperado, obtido
 }
 jget() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)" 2>/dev/null; }
 admin() { curl -s -H "X-Device-Token: $TOKEN" "$@"; }
+# PIN de encerramento do plebiscito ativo (exigido por /api/admin/close).
+cpin()  { admin "$BASE/api/admin/state" | jget 'd["closure_pin"] or ""'; }
 
 echo "== 1. Historico exige token =="
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/history")
@@ -210,6 +212,247 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN
   -H 'Content-Type: application/json' -d '{"confirm":true,"scope":"all"}' \
   "$BASE/api/admin/purge?secondary=$TOKEN")
 check "POST /api/admin/purge com secundaria -> 200" "200" "$code"
+
+echo "== 12. Anonimato do esquema de votos (sem vinculo votante->voto) =="
+resp=$(python3 - "$DB" <<'PY'
+import json, sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+vote_cols = [r[1] for r in db.execute("PRAGMA table_info(votes)")]
+poll_cols = [r[1] for r in db.execute("PRAGMA table_info(polls)")]
+print(json.dumps({"vote_cols": vote_cols, "polls_integrity": "integrity_hash" in poll_cols}))
+PY
+)
+check "votes = (id, poll_id, option_label)" "['id', 'poll_id', 'option_label']" \
+  "$(printf '%s' "$resp" | jget 'd["vote_cols"]')"
+check "polls expoe integrity_hash" "True" "$(printf '%s' "$resp" | jget 'd["polls_integrity"]')"
+
+echo "== 13. Integridade SHA-256 (selo no fechamento) =="
+resp=$(admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Auditoria","options":["Sim","Nao"]}')
+AUD_ID=$(printf '%s' "$resp" | jget 'd["poll"]["id"]')
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"V-1"}' >/dev/null
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"V-2"}' >/dev/null
+curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_1"}' >/dev/null
+curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_2"}' >/dev/null
+
+# Antes do fechamento o digest ainda NAO esta selado.
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/verify")
+check "verify sem token -> 401" "401" "$code"
+resp=$(admin "$BASE/api/admin/verify")
+check "verify ativo: sealed = False" "False" "$(printf '%s' "$resp" | jget 'd["sealed"]')"
+check "verify ativo: reason = not_sealed" "not_sealed" "$(printf '%s' "$resp" | jget 'd["reason"]')"
+check "verify ativo: valid = False" "False" "$(printf '%s' "$resp" | jget 'd["valid"]')"
+check "algoritmo declarado = SHA-256" "SHA-256" "$(printf '%s' "$resp" | jget 'd["algorithm"]')"
+
+# Encerrar sela o digest SHA-256 do estado final (polls.integrity_hash).
+CPIN=$(cpin)
+resp=$(admin -X POST "$BASE/api/admin/close" -H 'Content-Type: application/json' \
+  -d "{\"closure_pin\":\"$CPIN\"}")
+check "close com o PIN do plebiscito -> closed" "closed" \
+  "$(printf '%s' "$resp" | jget 'd["poll"]["status"]')"
+resp=$(admin "$BASE/api/admin/polls/$AUD_ID/verify")
+check "verify encerrado: sealed = True" "True" "$(printf '%s' "$resp" | jget 'd["sealed"]')"
+check "verify encerrado: valid = True" "True" "$(printf '%s' "$resp" | jget 'd["valid"]')"
+check "verify encerrado: reason = ok" "ok" "$(printf '%s' "$resp" | jget 'd["reason"]')"
+HASH1=$(printf '%s' "$resp" | jget 'd["expected"]')
+printf '%s' "$HASH1" | grep -Eq '^[0-9a-f]{64}$'
+check "digest e SHA-256 hex (64 chars)" "0" "$?"
+
+# Relatorio (Ata) traz o bloco de integridade selado/valido e as regras.
+resp=$(admin "$BASE/api/admin/report")
+check "report: integridade selada" "True" "$(printf '%s' "$resp" | jget 'd["integrity"]["sealed"]')"
+check "report: integridade valida" "True" "$(printf '%s' "$resp" | jget 'd["integrity"]["valid"]')"
+check "report: digest = selo gravado" "1" \
+  "$(printf '%s' "$resp" | jget 'int(d["integrity"]["hash"] == d["integrity"]["computed"])')"
+check "report: votos hasheados = 2" "2" "$(printf '%s' "$resp" | jget 'd["integrity"]["votes_hashed"]')"
+check "report: polit. token unico = True" "True" "$(printf '%s' "$resp" | jget 'd["rules"]["single_token_policy"]')"
+check "report: cooldown do check-in" "$(python3 -c "import os;print(float(os.environ.get('CHECKIN_COOLDOWN_SECONDS','2')))")" \
+  "$(printf '%s' "$resp" | jget 'd["rules"]["checkin_cooldown"]')"
+check "report: atraso de resultados" "$(python3 -c "import os;print(int(os.environ.get('RESULTS_DELAY_SECONDS','5')))")" \
+  "$(printf '%s' "$resp" | jget 'd["rules"]["results_delay"]')"
+check "report: total de votantes = 2" "2" "$(printf '%s' "$resp" | jget 'd["total_voters_registered"]')"
+
+# Historico: cada plebiscito carrega o proprio bloco de integridade.
+resp=$(admin "$BASE/api/admin/history")
+check "historico: selo valido" "True" \
+  "$(printf '%s' "$resp" | jget 'd["elections"][0]["integrity"]["valid"]')"
+check "historico: hash == digest recalculado" "1" \
+  "$(printf '%s' "$resp" | jget 'int(d["elections"][0]["integrity"]["hash"] == d["elections"][0]["integrity"]["computed"])')"
+
+echo "== 14. Ata de fechamento: assinaturas dinamicas + integridade no HTML =="
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/admin/relatorio")
+check "Ata sem token -> 401" "401" "$code"
+ATA="$BASE/admin/relatorio?token=$TOKEN"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$ATA")
+check "Ata com token -> 200" "200" "$code"
+
+# Sem parametros: usa as linhas padrao (assinatura manual).
+html=$(curl -s "$ATA")
+printf '%s' "$html" | grep -q 'Presidente da Mesa'
+check "Ata usa assinaturas padrao" "0" "$?"
+printf '%s' "$html" | grep -q "$HASH1"
+check "Ata exibe o digest SHA-256" "0" "$?"
+
+# Linhas dinamicas (listas paralelas sig_nome/sig_cargo/sig_doc).
+html=$(curl -s "$ATA&sig_nome=Ana%20Souza&sig_cargo=Presidenta&sig_doc=MAT-001&sig_nome=Bruno%20Lima&sig_cargo=Secretario&sig_doc=MAT-002")
+printf '%s' "$html" | grep -q 'Ana Souza';   check "Ata mostra 1o signatario" "0" "$?"
+printf '%s' "$html" | grep -q 'Presidenta';  check "Ata mostra o cargo do 1o" "0" "$?"
+printf '%s' "$html" | grep -q 'MAT-001';     check "Ata mostra a matricula do 1o" "0" "$?"
+printf '%s' "$html" | grep -q 'Bruno Lima';  check "Ata mostra o 2o signatario" "0" "$?"
+printf '%s' "$html" | grep -q 'MAT-002';     check "Ata mostra a matricula do 2o" "0" "$?"
+printf '%s' "$html" | grep -q 'Presidente da Mesa'
+check "Ata NAO usa o padrao com assinaturas informadas" "1" "$?"
+
+# Linhas sem nome sao ignoradas (volta as linhas padrao).
+html=$(curl -s "$ATA&sig_nome=&sig_cargo=Presidente")
+printf '%s' "$html" | grep -q 'Presidente da Mesa'
+check "Ata ignora linhas sem nome" "0" "$?"
+
+# Relatorio Geral de Historico (A4) tambem abre com token.
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/admin/relatorio/historico?token=$TOKEN")
+check "Relatorio de historico -> 200" "200" "$code"
+
+echo "== 15. Deteccao de adulteracao externa do banco =="
+# Altera um voto direto no SQLite (simula edicao por terceiros/sqlite3).
+python3 - "$DB" "$AUD_ID" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+# O ultimo voto de "Auditoria" e 'Nao' (opt_2): troca para 'Sim'.
+cur = db.execute(
+    "UPDATE votes SET option_label = 'Sim' WHERE id = "
+    "(SELECT MAX(id) FROM votes WHERE poll_id = ?)",
+    (int(sys.argv[2]),),
+)
+print("linhas_alteradas=%d" % cur.rowcount)
+db.commit()
+db.close()
+PY
+resp=$(admin "$BASE/api/admin/polls/$AUD_ID/verify")
+check "apos adulteracao: valid = False" "False" "$(printf '%s' "$resp" | jget 'd["valid"]')"
+check "apos adulteracao: reason = checksum_mismatch" "checksum_mismatch" \
+  "$(printf '%s' "$resp" | jget 'd["reason"]')"
+check "apos adulteracao: selo preservado" "$HASH1" "$(printf '%s' "$resp" | jget 'd["expected"]')"
+check "apos adulteracao: digest diverge do selo" "1" \
+  "$(printf '%s' "$resp" | jget 'int(d["expected"] != d["actual"])')"
+
+resp=$(admin "$BASE/api/admin/history")
+check "historico: conta 1 plebiscito divergente" "1" \
+  "$(printf '%s' "$resp" | jget 'int(d["elections"][0]["integrity"]["valid"] == False)')"
+
+echo "== 16. PIN de encerramento e conciliacao de fechamento =="
+resp=$(admin -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Plebiscito com PIN","options":["Sim","Nao"]}')
+PIN_ID=$(printf '%s' "$resp" | jget 'd["poll"]["id"]')
+CPIN=$(printf '%s' "$resp" | jget 'd["poll"]["closure_pin"] or ""')
+printf '%s' "$CPIN" | grep -Eq '^[0-9]{4,6}$'
+check "plebiscito nasce com PIN numerico (4 a 6 digitos)" "0" "$?"
+check "state expoe o mesmo closure_pin" "$CPIN" "$(cpin)"
+
+# 2 credenciados, 1 voto -> 1 token pendente (votante ainda na fila).
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"PIN-1"}' >/dev/null
+curl -s -X POST "$BASE/api/vote" -H 'Content-Type: application/json' -d '{"option_id":"opt_1"}' >/dev/null
+curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"PIN-2"}' >/dev/null
+
+resp=$(admin "$BASE/api/admin/state")
+check "conciliacao: check-ins = 2" "2" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["checkins_total"]')"
+check "conciliacao: votos = 1" "1" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["votes_cast"]')"
+check "conciliacao: tokens ativos = 1" "1" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["active_tokens"]')"
+check "conciliacao: esperado = votos + tokens" "2" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["expected_checkins"]')"
+check "conciliacao: balancada (diferenca zero)" "True" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["balanced"]')"
+
+resp=$(admin "$BASE/api/admin/report")
+check "Ata: conciliacao balanceada" "True" \
+  "$(printf '%s' "$resp" | jget 'd["reconciliation"]["balanced"]')"
+check "Ata: isolamento de rede declarado" "$(python3 -c "import os;print(os.environ.get('NETWORK_MODE','Rede Local / Offline'))")" \
+  "$(printf '%s' "$resp" | jget 'd["network_isolation"]')"
+
+echo "== 17. Inspetor do banco (somente leitura) =="
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/db/inspect?table=votes")
+check "inspect sem token -> 401" "401" "$code"
+
+resp=$(admin "$BASE/api/admin/db/inspect?table=votes")
+check "inspect votes: read_only = True" "True" \
+  "$(printf '%s' "$resp" | jget 'd["read_only"]')"
+check "inspect votes: marcada como anonima" "True" \
+  "$(printf '%s' "$resp" | jget 'd["anonymous"]')"
+check "inspect votes: esquema (id, poll_id, option_label)" "['id', 'poll_id', 'option_label']" \
+  "$(printf '%s' "$resp" | jget 'd["columns"]')"
+# O total exibido bate com a contagem real no SQLite (sem vazar vinculo).
+EXPECTED_VOTES=$(python3 - "$DB" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+print(db.execute("SELECT COUNT(*) FROM votes").fetchone()[0])
+PY
+)
+check "inspect votes: count = COUNT(*) real" "$EXPECTED_VOTES" \
+  "$(printf '%s' "$resp" | jget 'd["count"]')"
+check "inspect votes: sem coluna de identificacao" "0" \
+  "$(printf '%s' "$resp" | jget 'int(any(c in d["columns"] for c in ("badge_id","voter_id","ip","created_at")))')"
+
+resp=$(admin "$BASE/api/admin/db/inspect?table=xxx")
+check "inspect: tabela fora da whitelist cai em polls" "polls" \
+  "$(printf '%s' "$resp" | jget 'd["table"]')"
+check "inspect: whitelist anunciada" "['polls', 'voters', 'votes', 'booths', 'settings']" \
+  "$(printf '%s' "$resp" | jget 'd["tables"]')"
+check "inspect polls: expoe a coluna closure_pin" "1" \
+  "$(printf '%s' "$resp" | jget 'int("closure_pin" in d["columns"])')"
+
+echo "== 18. Log de auditoria =="
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/admin/audit")
+check "audit sem token -> 401" "401" "$code"
+
+# Fechamentos negados (sem PIN e com PIN errado) NAO encerram o plebiscito.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  "$BASE/api/admin/close")
+check "close sem PIN -> 403" "403" "$code"
+resp=$(curl -s -X POST -H "X-Device-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"closure_pin":"000000"}' "$BASE/api/admin/close")
+check "close com PIN errado -> invalid_closure_pin" "invalid_closure_pin" \
+  "$(printf '%s' "$resp" | jget 'd["error"]')"
+resp=$(admin "$BASE/api/admin/state")
+check "plebiscito segue aberto apos negativas" "open" \
+  "$(printf '%s' "$resp" | jget 'd["poll"]["status"]')"
+
+# Pareamento ativo + cabine nova sem PIN -> 403 (evento auditado).
+admin -X POST "$BASE/api/admin/pairing" -H 'Content-Type: application/json' \
+  -d '{"generate":true}' >/dev/null
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register" \
+  -H 'Content-Type: application/json' -d '{"booth_id":"audit-cab"}')
+check "cabine nova sem PIN de pareamento -> 403" "403" "$code"
+admin -X POST "$BASE/api/admin/pairing" -H 'Content-Type: application/json' \
+  -d '{"clear":true}' >/dev/null
+
+# Fechamento legitimo pelo header X-Closure-Pin.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Device-Token: $TOKEN" \
+  -H "X-Closure-Pin: $CPIN" "$BASE/api/admin/close")
+check "close com X-Closure-Pin correto -> 200" "200" "$code"
+resp=$(admin "$BASE/api/admin/state")
+check "plebiscito encerrado pelo PIN" "closed" \
+  "$(printf '%s' "$resp" | jget 'd["poll"]["status"]')"
+
+resp=$(admin "$BASE/api/admin/audit?limit=200")
+check "audit: registro de fechamento negado" "1" \
+  "$(printf '%s' "$resp" | jget 'int(any(e["event"]=="poll_close_denied" for e in d["entries"]))')"
+check "audit: registro de fechamento aceito" "1" \
+  "$(printf '%s' "$resp" | jget 'int(any(e["event"]=="poll_close" for e in d["entries"]))')"
+check "audit: fechamento aponta o plebiscito" "$PIN_ID" \
+  "$(printf '%s' "$resp" | jget '[e["poll_id"] for e in d["entries"] if e["event"]=="poll_close"][0]')"
+check "audit: registro de pareamento negado" "1" \
+  "$(printf '%s' "$resp" | jget 'int(any(e["event"]=="booth_pair_denied" for e in d["entries"]))')"
+check "audit: evento mais recente primeiro (id decrescente)" "1" \
+  "$(printf '%s' "$resp" | jget 'int(all(d["entries"][i]["id"] >= d["entries"][i+1]["id"] for i in range(len(d["entries"])-1)))')"
+check "audit: todo evento traz IP do ator" "1" \
+  "$(printf '%s' "$resp" | jget 'int(all(bool(e["actor_ip"]) for e in d["entries"]))')"
+
+resp=$(admin "$BASE/api/admin/audit?limit=1")
+check "audit: limit=1 respeitado" "1" "$(printf '%s' "$resp" | jget 'd["count"]')"
+check "audit: limit=1 e o poll_close" "poll_close" \
+  "$(printf '%s' "$resp" | jget 'd["entries"][0]["event"]')"
 
 echo
 echo "RESULTADO: $pass passaram, $fail falharam"

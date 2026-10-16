@@ -58,6 +58,103 @@
       </div>
     </div>
 
+    <h2 class="section">📜 Regras de Negócio, Parâmetros e Declaração de Sigilo</h2>
+    <table class="meta">
+      <tr>
+        <td class="label">Cooldown de check-in (anti duplo-credenciamento)</td>
+        <td>{{ '%.1f' | format(report.rules.checkin_cooldown) }} s por cabine</td>
+      </tr>
+      <tr>
+        <td class="label">Política de token de voto</td>
+        <td>1 check-in = 1 token de voto, de uso único e não reutilizável</td>
+      </tr>
+      <tr>
+        <td class="label">Atraso controlado de divulgação (painel TV)</td>
+        <td>{{ report.rules.results_delay }} s{% if report.rules.results_delay_minutes %}
+          — janelas de divulgação a cada <strong>{{ report.rules.results_delay_minutes }} min</strong>
+          {% else %} — divulgação contínua{% endif %}</td>
+      </tr>
+      <tr>
+        <td class="label">Isolamento de rede (modo de operação)</td>
+        <td>{{ report.rules.network_mode }}</td>
+      </tr>
+      <tr>
+        <td class="label">Pareamento de cabines por PIN</td>
+        <td>{{ 'ATIVO' if report.rules.pairing_enabled else 'DESATIVADO' }}</td>
+      </tr>
+      <tr>
+        <td class="label">Votantes registrados (total)</td>
+        <td>{{ report.stats.total_voters }}</td>
+      </tr>
+      <tr>
+        <td class="label">Votos apurados (total)</td>
+        <td>{{ report.stats.total_votes }}</td>
+      </tr>
+      <tr>
+        <td class="label">Divergência check-ins × votos</td>
+        <td>
+          {{ report.stats.checkins_vs_votes }}
+          {% if report.stats.checkins_vs_votes == 0 %}
+          <span class="ok-tag">OK — consistente</span>
+          {% else %}
+          <span class="warn-tag">Atenção — credenciados que não votaram</span>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <h3 class="sub-section">🔐 Integridade dos dados (SHA-256)</h3>
+    <div class="integrity">
+      <p>Cada plebiscito encerrado recebe um selo criptográfico <strong>SHA-256</strong> calculado
+        sobre seus metadados e todos os votos anônimos. A verificação recalcula o digest e o
+        compara ao selo gravado, apontando qualquer alteração externa do banco.</p>
+      <div class="hash-row">
+        <span class="label">Plebiscitos com selo válido</span>
+        <code>{{ report.stats.integrity_valid }}</code>
+      </div>
+      <div class="hash-row">
+        <span class="label">Com adulteração detectada</span>
+        <code>{{ report.stats.integrity_invalid }}</code>
+      </div>
+      <div class="hash-row">
+        <span class="label">Não selados (em andamento)</span>
+        <code>{{ report.stats.integrity_unsealed }}</code>
+      </div>
+      {% if report.stats.integrity_invalid %}
+      <div class="verdict bad">✘ ADULTERAÇÃO DETECTADA em {{ report.stats.integrity_invalid }}
+        plebiscito(s). Confira as Atas individuais para o selo divergente.</div>
+      {% else %}
+      <div class="verdict ok">✔ NENHUMA ADULTERAÇÃO DETECTADA nos plebiscitos selados.</div>
+      {% endif %}
+    </div>
+
+    <h3 class="sub-section">🛡️ Schema do banco de dados &amp; Declaração de Anonimato</h3>
+    <div class="disclosure">
+      <p>O sistema garante que <strong>não exista qualquer vínculo entre o votante e o seu
+        voto</strong>. As tabelas relevantes são:</p>
+      <table class="meta schema">
+        <tr>
+          <td class="label"><code>voters</code> (check-in)</td>
+          <td><code>badge_id (PK), voted_at</code> — registra <em>quem</em> compareceu e
+            <em>quando</em>, e é <strong>limpa no encerramento</strong>. Não possui coluna de voto.</td>
+        </tr>
+        <tr>
+          <td class="label"><code>votes</code> (voto)</td>
+          <td><code>id, poll_id, option_label</code> — <strong>sem</strong> chave estrangeira,
+            <strong>sem</strong> crachá/votante, <strong>sem</strong> carimbo de tempo por voto e
+            <strong>sem</strong> IP de cabine.</td>
+        </tr>
+        <tr>
+          <td class="label">Correlação votante ↔ voto</td>
+          <td><strong>Inexistente</strong>: não há coluna, chave estrangeira ou tabela de junção
+            capaz de associar uma linha de <code>votes</code> a um votante.</td>
+        </tr>
+      </table>
+      <p class="note">O atraso controlado de divulgação ({{ report.rules.results_delay }} s) é
+        estimado pela contagem de check-ins antigos da tabela <code>voters</code> — nunca por um
+        vínculo voto→votante.</p>
+    </div>
+
     {% if report.elections %}
     <h2 class="section">Plebiscitos registrados</h2>
     <table class="results">
@@ -70,6 +167,7 @@
           <th>Encerramento</th>
           <th class="num col-votes">Votos</th>
           <th class="num col-votes">Votantes</th>
+          <th>Integridade</th>
         </tr>
       </thead>
       <tbody>
@@ -86,12 +184,24 @@
           <td>{{ e.closed_at | fmt_dt if e.closed_at else '—' }}</td>
           <td class="num">{{ e.total_votes }}</td>
           <td class="num">{{ e.voters if e.voters is not none else '—' }}</td>
+          <td>
+            {% if e.integrity and e.integrity.sealed %}
+              {% if e.integrity.valid %}
+              <span class="ok-tag">✔ íntegro</span>
+              {% else %}
+              <span class="warn-tag">✘ adulterado</span>
+              {% endif %}
+            {% else %}
+            <span class="status-tag">— não selado</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
         <tr class="total">
           <td class="num" colspan="5">Totais gerais</td>
           <td class="num">{{ report.stats.total_votes }}</td>
           <td class="num">{{ report.stats.total_voters }}</td>
+          <td></td>
         </tr>
       </tbody>
     </table>
