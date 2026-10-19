@@ -1,0 +1,725 @@
+2026-10-12 23:52:47 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5099
+2026-10-12 23:52:47 [INFO] DEVICE_TOKEN ativo: sectoken
+2026-10-12 23:52:47 [INFO] Banco de dados em uso: /tmp/llog_235417.db
+2026-10-12 23:52:50 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-12 23:52:50 [INFO] Plebiscito #1 criado (encerra #-): 'Teste'
+2026-10-12 23:52:50 [INFO] Cabine registrada: Cabine 01 (log-cab) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-12 23:52:50 [INFO] Heartbeat da cabine log-cab (status=idle, IP=127.0.0.1)
+2026-10-12 23:55:17 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-12 23:55:17 [INFO] DEVICE_TOKEN ativo: nSo9od6VJu-NM6QZfNcFyqJ_eG_rx0PH (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-12 23:55:17 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-12 23:55:51 [INFO] Plebiscito #4 criado (encerra #3): 'SDFSDFSD'
+2026-10-12 23:57:34 [INFO] Pareamento de cabines: PIN de pareamento: 543878
+2026-10-12 23:57:54 [INFO] Plebiscito #5 criado (encerra #4): 'KNNJK'
+2026-10-12 23:58:54 [INFO] Plebiscito #6 criado (encerra #5): 'ATIVO'
+2026-10-13 00:01:11 [INFO] Plebiscito #7 criado (encerra #6): 'NAO ESTA FUNCIONANDO'
+2026-10-13 00:02:24 [INFO] Pareamento de cabines: PIN de pareamento: 858174
+2026-10-13 00:14:04 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-13 00:14:04 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:14:04 [INFO] Banco de dados em uso: /tmp/votacao_e2e_245650.db
+2026-10-13 00:14:04 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:14:04 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:14:04 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-13 00:14:07 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-13 00:14:07 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:14:07 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-13 00:14:07 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:14:07 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:14:07 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-13 00:14:07 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-13 00:14:07 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-13 00:14:07 [INFO] Plebiscito #3 encerrado.
+2026-10-13 00:14:08 [WARNING] Falha de autenticacao admin (401) na Ata de fechamento - IP 127.0.0.1
+2026-10-13 00:14:08 [INFO] Pareamento de cabines: PIN de pareamento: 917125
+2026-10-13 00:14:08 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-13 00:14:08 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-13 00:14:08 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-13 00:14:08 [INFO] Cabine removida (deregistro): pair-A
+2026-10-13 00:14:08 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-13 00:14:08 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:14:08 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:14:08 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:14:08 [INFO] Banco de dados em uso: /tmp/votacao_persist_245909.db
+2026-10-13 00:14:08 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-13 00:14:08 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:14:09 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:14:09 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:14:09 [INFO] Banco de dados em uso: /tmp/votacao_persist_245909.db
+2026-10-13 00:14:10 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:14:11 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:14:11 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:14:11 [INFO] Banco de dados em uso: /tmp/votacao_persist_245909.db
+2026-10-13 00:14:11 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-13 00:14:12 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-13 00:14:12 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:14:12 [INFO] Banco de dados em uso: /tmp/dbtest_246077/a/b/c/votacao.db
+2026-10-13 00:14:15 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-13 00:14:15 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:14:15 [INFO] Banco de dados em uso: /tmp/dbtest_246077/rel/dados/votacao.db
+2026-10-13 00:14:18 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-13 00:14:18 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:14:18 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:14:18 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_246077/ro/votacao.db
+2026-10-13 00:14:21 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-13 00:14:21 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:14:21 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:14:21 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_246077/regular/sub/votacao.db
+2026-10-13 00:14:24 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:14:24 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:14:24 [INFO] Banco de dados em uso: /tmp/votacao_hist_246236.db
+2026-10-13 00:14:24 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-13 00:14:24 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-13 00:14:24 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-13 00:14:25 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-13 00:14:25 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-13 00:14:25 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-13 00:18:10 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-13 00:18:10 [INFO] DEVICE_TOKEN ativo: ggSnon3cumJwYM4oMg-1pPoKP973Lzyj (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-13 00:18:10 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-13 00:19:01 [INFO] Plebiscito #7 encerrado.
+2026-10-13 00:20:17 [INFO] Pareamento de cabines: PIN de pareamento: 458356
+2026-10-13 00:20:24 [INFO] Cabine removida (deregistro): 127c3c80-0d08-4151-b0e4-5d20828e19c1
+2026-10-13 00:20:55 [INFO] Plebiscito #8 criado (encerra #7): 'dddddddddddddddddddd'
+2026-10-13 00:21:03 [INFO] Plebiscito #8 encerrado.
+2026-10-13 00:21:37 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 8 plebiscito(s) removido(s).
+2026-10-13 00:24:07 [INFO] Plebiscito #1 criado (encerra #-): 'EU'
+2026-10-13 00:24:30 [INFO] Cabine registrada: Cabine 01 (5fb713d5-c4f1-4839-8a26-9fc7aee9c131) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:24:46 [INFO] Cabine registrada: Cabine 01 (5fb713d5-c4f1-4839-8a26-9fc7aee9c131) via IP 127.0.0.1
+2026-10-13 00:24:47 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=voting, IP=127.0.0.1)
+2026-10-13 00:24:51 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=voting, IP=127.0.0.1)
+2026-10-13 00:24:55 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=idle, IP=127.0.0.1)
+2026-10-13 00:24:56 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=n/a, IP=127.0.0.1)
+2026-10-13 00:25:03 [INFO] Cabine registrada: Cabine 01 (5fb713d5-c4f1-4839-8a26-9fc7aee9c131) via IP 127.0.0.1
+2026-10-13 00:30:25 [INFO] Cabine registrada: Cabine 02 (booth-o8fnj53jx4n-mv64hswn) via IP 172.20.0.73 - novo token de pareamento emitido
+2026-10-13 00:30:28 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:30:33 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:30:38 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:30:41 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:30:43 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:30:48 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:30:53 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:30:55 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=idle, IP=172.20.0.73)
+2026-10-13 00:30:58 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:01 [INFO] Cabine registrada: Cabine 01 (5fb713d5-c4f1-4839-8a26-9fc7aee9c131) via IP 127.0.0.1
+2026-10-13 00:31:03 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:08 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:09 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:13 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:15 [INFO] Cabine registrada: Cabine 01 (5fb713d5-c4f1-4839-8a26-9fc7aee9c131) via IP 127.0.0.1
+2026-10-13 00:31:15 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=voting, IP=127.0.0.1)
+2026-10-13 00:31:18 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:20 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=voting, IP=127.0.0.1)
+2026-10-13 00:31:22 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=idle, IP=172.20.0.73)
+2026-10-13 00:31:23 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:24 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=idle, IP=127.0.0.1)
+2026-10-13 00:31:25 [INFO] Heartbeat da cabine 5fb713d5-c4f1-4839-8a26-9fc7aee9c131 (status=n/a, IP=127.0.0.1)
+2026-10-13 00:31:28 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:33 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:38 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:39 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:43 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:48 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=idle, IP=172.20.0.73)
+2026-10-13 00:31:48 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:53 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:31:55 [INFO] Cabine booth-o8fnj53jx4n-mv64hswn assumiu/recebeu um token de votacao.
+2026-10-13 00:31:55 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:31:58 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=voting, IP=172.20.0.73)
+2026-10-13 00:32:03 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=idle, IP=172.20.0.73)
+2026-10-13 00:32:03 [INFO] Heartbeat da cabine booth-o8fnj53jx4n-mv64hswn (status=n/a, IP=172.20.0.73)
+2026-10-13 00:38:35 [INFO] Cabine removida (deregistro): 5fb713d5-c4f1-4839-8a26-9fc7aee9c131
+2026-10-13 00:38:38 [INFO] Cabine removida (deregistro): booth-o8fnj53jx4n-mv64hswn
+2026-10-13 00:50:56 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-13 00:50:56 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:50:56 [INFO] Banco de dados em uso: /tmp/votacao_e2e_259042.db
+2026-10-13 00:50:57 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:50:57 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:50:57 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-13 00:50:59 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-13 00:50:59 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:50:59 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-13 00:50:59 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:50:59 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:50:59 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-13 00:50:59 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-13 00:50:59 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-13 00:50:59 [INFO] Plebiscito #3 encerrado.
+2026-10-13 00:51:00 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-13 00:51:00 [INFO] Pareamento de cabines: PIN de pareamento: 963240
+2026-10-13 00:51:00 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-13 00:51:00 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-13 00:51:00 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-13 00:51:00 [INFO] Cabine removida (deregistro): pair-A
+2026-10-13 00:51:00 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-13 00:51:00 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:51:00 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:51:00 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:51:00 [INFO] Banco de dados em uso: /tmp/votacao_persist_259281.db
+2026-10-13 00:51:01 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-13 00:51:01 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:51:02 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:51:02 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:51:02 [INFO] Banco de dados em uso: /tmp/votacao_persist_259281.db
+2026-10-13 00:51:02 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:51:03 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:51:03 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:51:03 [INFO] Banco de dados em uso: /tmp/votacao_persist_259281.db
+2026-10-13 00:51:03 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-13 00:51:04 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-13 00:51:04 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:51:04 [INFO] Banco de dados em uso: /tmp/dbtest_259450/a/b/c/votacao.db
+2026-10-13 00:51:07 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-13 00:51:07 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:51:07 [INFO] Banco de dados em uso: /tmp/dbtest_259450/rel/dados/votacao.db
+2026-10-13 00:51:10 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-13 00:51:10 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:51:10 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:51:10 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_259450/ro/votacao.db
+2026-10-13 00:51:13 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-13 00:51:13 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:51:13 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:51:13 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_259450/regular/sub/votacao.db
+2026-10-13 00:51:16 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:51:16 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:51:16 [INFO] Banco de dados em uso: /tmp/votacao_hist_259581.db
+2026-10-13 00:51:17 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-13 00:51:17 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-13 00:51:17 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-13 00:51:17 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-13 00:51:17 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-13 00:51:18 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-13 00:51:18 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-13 00:51:18 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 00:51:18 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-13 00:51:18 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-13 00:51:18 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-13 00:51:18 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 00:52:56 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5061
+2026-10-13 00:52:56 [INFO] DEVICE_TOKEN ativo: smoketoken456
+2026-10-13 00:52:56 [INFO] Banco de dados em uso: /tmp/votacao_smoke_260593.db
+2026-10-13 00:52:56 [INFO] Cabine registrada: Cabine 01 (smoke-01) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:52:56 [INFO] Plebiscito #1 criado (encerra #-): 'Smoke?'
+2026-10-13 00:52:56 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:52:56 [WARNING] Falha de autenticacao admin (401) em Relatorio Geral de Historico - IP 127.0.0.1
+2026-10-13 00:52:56 [WARNING] Falha de autenticacao admin (401) em Relatorio de Auditoria de Cabines - IP 127.0.0.1
+2026-10-13 00:53:58 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-13 00:53:58 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:53:58 [INFO] Banco de dados em uso: /tmp/votacao_e2e_261234.db
+2026-10-13 00:53:58 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:53:58 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 00:53:58 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-13 00:54:01 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-13 00:54:01 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:54:01 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-13 00:54:01 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:54:01 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:54:01 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-13 00:54:01 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-13 00:54:01 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-13 00:54:01 [INFO] Plebiscito #3 encerrado.
+2026-10-13 00:54:02 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-13 00:54:02 [INFO] Pareamento de cabines: PIN de pareamento: 528023
+2026-10-13 00:54:02 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-13 00:54:02 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-13 00:54:02 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-13 00:54:02 [INFO] Cabine removida (deregistro): pair-A
+2026-10-13 00:54:02 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-13 00:54:02 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:54:02 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:54:02 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:54:02 [INFO] Banco de dados em uso: /tmp/votacao_persist_261491.db
+2026-10-13 00:54:02 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-13 00:54:02 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 00:54:03 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:54:03 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:54:03 [INFO] Banco de dados em uso: /tmp/votacao_persist_261491.db
+2026-10-13 00:54:04 [INFO] Plebiscito #1 encerrado.
+2026-10-13 00:54:05 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:54:05 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 00:54:05 [INFO] Banco de dados em uso: /tmp/votacao_persist_261491.db
+2026-10-13 00:54:05 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-13 00:54:06 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-13 00:54:06 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:54:06 [INFO] Banco de dados em uso: /tmp/dbtest_261675/a/b/c/votacao.db
+2026-10-13 00:54:09 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-13 00:54:09 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:54:09 [INFO] Banco de dados em uso: /tmp/dbtest_261675/rel/dados/votacao.db
+2026-10-13 00:54:12 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-13 00:54:12 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:54:12 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:54:12 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_261675/ro/votacao.db
+2026-10-13 00:54:15 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-13 00:54:15 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 00:54:15 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 00:54:15 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_261675/regular/sub/votacao.db
+2026-10-13 00:54:18 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 00:54:18 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 00:54:18 [INFO] Banco de dados em uso: /tmp/votacao_hist_261814.db
+2026-10-13 00:54:18 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-13 00:54:18 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-13 00:54:18 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-13 00:54:19 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-13 00:54:19 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-13 00:54:19 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-13 00:54:19 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-13 00:54:19 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 00:54:19 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-13 00:54:19 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-13 00:54:19 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-13 00:54:20 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 01:07:23 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-13 01:07:23 [INFO] DEVICE_TOKEN ativo: raeFQAdHlN2z0oyoB5aZumLxfCiaGMRR (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-13 01:07:23 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-13 01:07:38 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 01:28:30 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 01:28:30 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 01:28:30 [INFO] Banco de dados em uso: /tmp/votacao_hist_273686.db
+2026-10-13 01:28:30 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-13 01:28:30 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-13 01:28:30 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-13 01:28:31 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-13 01:28:31 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-13 01:28:31 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-13 01:28:31 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-13 01:28:31 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 01:28:31 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-13 01:28:31 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-13 01:28:31 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-13 01:28:32 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-13 01:28:32 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-13 01:28:32 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-13 01:28:32 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-13 01:28:32 [INFO] Backup do banco gerado: votacao_backup_20261013_042832.db (IP 127.0.0.1).
+2026-10-13 01:28:32 [INFO] Backup do banco gerado: votacao_backup_20261013_042832.db (IP 127.0.0.1).
+2026-10-13 01:28:32 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-13 01:28:32 [INFO] Backup do banco gerado: votacao_backup_20261013_042832.db (IP 127.0.0.1).
+2026-10-13 01:28:32 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-13 01:28:32 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-13 01:28:32 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_273686.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-13 01:28:32 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-13 01:28:32 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-13 01:28:32 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-13 01:29:07 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-13 01:29:07 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 01:29:07 [INFO] Banco de dados em uso: /tmp/votacao_e2e_274206.db
+2026-10-13 01:29:07 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 01:29:07 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-13 01:29:07 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-13 01:29:10 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-13 01:29:10 [INFO] Plebiscito #1 encerrado.
+2026-10-13 01:29:10 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-13 01:29:10 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 01:29:10 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 01:29:10 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-13 01:29:10 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-13 01:29:10 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-13 01:29:10 [INFO] Plebiscito #3 encerrado.
+2026-10-13 01:29:11 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-13 01:29:11 [INFO] Pareamento de cabines: PIN de pareamento: 867481
+2026-10-13 01:29:11 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-13 01:29:11 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-13 01:29:11 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-13 01:29:11 [INFO] Cabine removida (deregistro): pair-A
+2026-10-13 01:29:11 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-13 01:29:11 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 01:29:11 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 01:29:11 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 01:29:11 [INFO] Banco de dados em uso: /tmp/votacao_persist_274446.db
+2026-10-13 01:29:11 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-13 01:29:12 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-13 01:29:12 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 01:29:12 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 01:29:12 [INFO] Banco de dados em uso: /tmp/votacao_persist_274446.db
+2026-10-13 01:29:13 [INFO] Plebiscito #1 encerrado.
+2026-10-13 01:29:14 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-13 01:29:14 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-13 01:29:14 [INFO] Banco de dados em uso: /tmp/votacao_persist_274446.db
+2026-10-13 01:29:14 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-13 01:29:15 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-13 01:29:15 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 01:29:15 [INFO] Banco de dados em uso: /tmp/dbtest_274638/a/b/c/votacao.db
+2026-10-13 01:29:18 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-13 01:29:18 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 01:29:18 [INFO] Banco de dados em uso: /tmp/dbtest_274638/rel/dados/votacao.db
+2026-10-13 01:29:21 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-13 01:29:21 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 01:29:21 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 01:29:21 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_274638/ro/votacao.db
+2026-10-13 01:29:24 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-13 01:29:24 [INFO] DEVICE_TOKEN ativo: t
+2026-10-13 01:29:24 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-13 01:29:24 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_274638/regular/sub/votacao.db
+2026-10-13 01:29:45 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5061
+2026-10-13 01:29:45 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-13 01:29:45 [INFO] Banco de dados em uso: /tmp/votacao_smoke_274945.db
+2026-10-13 01:36:26 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-13 01:36:26 [INFO] DEVICE_TOKEN ativo: 1BaxGK3VAzVEBZ3VLfpj2h1QWuJTSf20 (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-13 01:36:26 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-13 01:36:29 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 11:48:51 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 11:48:51 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 11:48:51 [INFO] Banco de dados em uso: /tmp/votacao_hist_16929.db
+2026-10-16 11:48:51 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-16 11:48:51 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-16 11:48:51 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-16 11:48:52 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-16 11:48:52 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-16 11:48:52 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-16 11:48:52 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-16 11:48:52 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 11:48:52 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-16 11:48:53 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-16 11:48:53 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-16 11:48:53 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 11:48:53 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-16 11:48:53 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-16 11:48:53 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-16 11:48:53 [INFO] Backup do banco gerado: votacao_backup_20261016_144853.db (IP 127.0.0.1).
+2026-10-16 11:48:53 [INFO] Backup do banco gerado: votacao_backup_20261016_144853.db (IP 127.0.0.1).
+2026-10-16 11:48:53 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-16 11:48:53 [INFO] Backup do banco gerado: votacao_backup_20261016_144853.db (IP 127.0.0.1).
+2026-10-16 11:48:53 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-16 11:48:53 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 11:48:53 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_16929.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-16 11:48:53 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 11:48:53 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 11:48:53 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 11:48:54 [INFO] Plebiscito #1 criado (encerra #-): 'Auditoria'
+2026-10-16 11:48:54 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/verify - IP 127.0.0.1
+2026-10-16 11:48:54 [INFO] Plebiscito #1 encerrado.
+2026-10-16 11:48:54 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 11:49:35 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 11:49:35 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 11:49:35 [INFO] Banco de dados em uso: /tmp/votacao_hist_17660.db
+2026-10-16 11:49:35 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-16 11:49:35 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-16 11:49:35 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-16 11:49:36 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-16 11:49:36 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-16 11:49:36 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-16 11:49:36 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-16 11:49:36 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 11:49:36 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-16 11:49:37 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-16 11:49:37 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-16 11:49:37 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 11:49:37 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-16 11:49:37 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-16 11:49:37 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-16 11:49:37 [INFO] Backup do banco gerado: votacao_backup_20261016_144937.db (IP 127.0.0.1).
+2026-10-16 11:49:37 [INFO] Backup do banco gerado: votacao_backup_20261016_144937.db (IP 127.0.0.1).
+2026-10-16 11:49:37 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-16 11:49:37 [INFO] Backup do banco gerado: votacao_backup_20261016_144937.db (IP 127.0.0.1).
+2026-10-16 11:49:37 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-16 11:49:37 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 11:49:37 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_17660.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-16 11:49:37 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 11:49:37 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 11:49:37 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 11:49:38 [INFO] Plebiscito #1 criado (encerra #-): 'Auditoria'
+2026-10-16 11:49:38 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/verify - IP 127.0.0.1
+2026-10-16 11:49:38 [INFO] Plebiscito #1 encerrado.
+2026-10-16 11:49:39 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 11:50:12 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-16 11:50:12 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 11:50:12 [INFO] Banco de dados em uso: /tmp/dbtest_18322/a/b/c/votacao.db
+2026-10-16 11:50:15 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-16 11:50:15 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 11:50:15 [INFO] Banco de dados em uso: /tmp/dbtest_18322/rel/dados/votacao.db
+2026-10-16 11:50:18 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-16 11:50:18 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 11:50:18 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 11:50:18 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_18322/ro/votacao.db
+2026-10-16 11:50:21 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-16 11:50:21 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 11:50:21 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 11:50:21 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_18322/regular/sub/votacao.db
+2026-10-16 11:50:24 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 11:50:24 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 11:50:24 [INFO] Banco de dados em uso: /tmp/votacao_persist_18502.db
+2026-10-16 11:50:24 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-16 11:50:24 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 11:50:25 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 11:50:25 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 11:50:25 [INFO] Banco de dados em uso: /tmp/votacao_persist_18502.db
+2026-10-16 11:50:25 [INFO] Plebiscito #1 encerrado.
+2026-10-16 11:50:26 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 11:50:26 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 11:50:26 [INFO] Banco de dados em uso: /tmp/votacao_persist_18502.db
+2026-10-16 11:50:27 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-16 11:50:28 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-16 11:50:28 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 11:50:28 [INFO] Banco de dados em uso: /tmp/votacao_e2e_18691.db
+2026-10-16 11:50:28 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 11:50:28 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 11:50:28 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-16 11:50:31 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-16 11:50:31 [INFO] Plebiscito #1 encerrado.
+2026-10-16 11:50:31 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-16 11:50:31 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 11:50:31 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 11:50:31 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-16 11:50:31 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-16 11:50:31 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-16 11:50:31 [INFO] Plebiscito #3 encerrado.
+2026-10-16 11:50:31 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 11:50:31 [INFO] Pareamento de cabines: PIN de pareamento: 354248
+2026-10-16 11:50:31 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-16 11:50:31 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-16 11:50:31 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-16 11:50:32 [INFO] Cabine removida (deregistro): pair-A
+2026-10-16 11:50:32 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 11:50:32 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 11:50:50 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5077
+2026-10-16 11:50:50 [INFO] DEVICE_TOKEN ativo: uitoken
+2026-10-16 11:50:50 [INFO] Banco de dados em uso: /tmp/vot_ui.db
+2026-10-16 11:53:07 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5078
+2026-10-16 11:53:07 [INFO] DEVICE_TOKEN ativo: opentok
+2026-10-16 11:53:07 [INFO] Banco de dados em uso: /tmp/vot_open.db
+2026-10-16 11:53:09 [INFO] Plebiscito #1 criado (encerra #-): 'Aberto'
+2026-10-16 11:56:24 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-16 11:56:24 [INFO] DEVICE_TOKEN ativo: F-ZmhCLBCclAry7WmDn0FBnCSn6qmSNu (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-16 11:56:24 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-16 11:57:48 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:43:53 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:43:53 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 12:43:53 [INFO] Banco de dados em uso: /tmp/votacao_hist_42337.db
+2026-10-16 12:43:53 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-16 12:43:53 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-16 12:43:53 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-16 12:43:54 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-16 12:43:54 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-16 12:43:54 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-16 12:43:54 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-16 12:43:54 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:43:54 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-16 12:43:54 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-16 12:43:55 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-16 12:43:55 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:43:55 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-16 12:43:55 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-16 12:43:55 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-16 12:43:55 [INFO] Backup do banco gerado: votacao_backup_20261016_154355.db (IP 127.0.0.1).
+2026-10-16 12:43:55 [INFO] Backup do banco gerado: votacao_backup_20261016_154355.db (IP 127.0.0.1).
+2026-10-16 12:43:55 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-16 12:43:55 [INFO] Backup do banco gerado: votacao_backup_20261016_154355.db (IP 127.0.0.1).
+2026-10-16 12:43:55 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-16 12:43:55 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:43:55 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_42337.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-16 12:43:55 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:43:55 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:43:55 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:43:55 [INFO] Plebiscito #1 criado (encerra #-): 'Auditoria'
+2026-10-16 12:43:56 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/verify - IP 127.0.0.1
+2026-10-16 12:43:56 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:43:56 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 12:43:57 [INFO] Plebiscito #2 criado (encerra #1): 'Plebiscito com PIN'
+2026-10-16 12:43:57 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/db/inspect - IP 127.0.0.1
+2026-10-16 12:43:58 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/audit - IP 127.0.0.1
+2026-10-16 12:43:58 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:43:58 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:43:58 [INFO] Pareamento de cabines: PIN de pareamento: 368774
+2026-10-16 12:43:58 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 12:43:58 [INFO] Plebiscito #2 encerrado.
+2026-10-16 12:44:52 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:44:52 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 12:44:52 [INFO] Banco de dados em uso: /tmp/votacao_hist_43404.db
+2026-10-16 12:44:52 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-16 12:44:52 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-16 12:44:52 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-16 12:44:52 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-16 12:44:53 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-16 12:44:53 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-16 12:44:53 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-16 12:44:53 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:44:53 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-16 12:44:53 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-16 12:44:53 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-16 12:44:53 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:44:53 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-16 12:44:53 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-16 12:44:54 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-16 12:44:54 [INFO] Backup do banco gerado: votacao_backup_20261016_154454.db (IP 127.0.0.1).
+2026-10-16 12:44:54 [INFO] Backup do banco gerado: votacao_backup_20261016_154454.db (IP 127.0.0.1).
+2026-10-16 12:44:54 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-16 12:44:54 [INFO] Backup do banco gerado: votacao_backup_20261016_154454.db (IP 127.0.0.1).
+2026-10-16 12:44:54 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-16 12:44:54 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:44:54 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_43404.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-16 12:44:54 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:44:54 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:44:54 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:44:54 [INFO] Plebiscito #1 criado (encerra #-): 'Auditoria'
+2026-10-16 12:44:54 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/verify - IP 127.0.0.1
+2026-10-16 12:44:54 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:44:55 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 12:44:55 [INFO] Plebiscito #2 criado (encerra #1): 'Plebiscito com PIN'
+2026-10-16 12:44:56 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/db/inspect - IP 127.0.0.1
+2026-10-16 12:44:56 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/audit - IP 127.0.0.1
+2026-10-16 12:44:56 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:44:56 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:44:56 [INFO] Pareamento de cabines: PIN de pareamento: 765457
+2026-10-16 12:44:56 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 12:44:56 [INFO] Plebiscito #2 encerrado.
+2026-10-16 12:45:28 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-16 12:45:28 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 12:45:28 [INFO] Banco de dados em uso: /tmp/votacao_e2e_44373.db
+2026-10-16 12:45:28 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 12:45:28 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 12:45:28 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-16 12:45:31 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-16 12:45:31 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:45:31 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:45:31 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:45:31 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:45:31 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-16 12:45:31 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:45:31 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:45:31 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-16 12:45:31 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-16 12:45:31 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-16 12:45:31 [INFO] Plebiscito #3 encerrado.
+2026-10-16 12:45:32 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 12:45:32 [INFO] Pareamento de cabines: PIN de pareamento: 217378
+2026-10-16 12:45:32 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-16 12:45:32 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-16 12:45:32 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-16 12:45:32 [INFO] Cabine removida (deregistro): pair-A
+2026-10-16 12:45:32 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 12:45:32 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:45:32 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:45:32 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:45:32 [INFO] Banco de dados em uso: /tmp/votacao_persist_44625.db
+2026-10-16 12:45:32 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-16 12:45:32 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:45:33 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:45:33 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:45:33 [INFO] Banco de dados em uso: /tmp/votacao_persist_44625.db
+2026-10-16 12:45:34 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:45:35 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:45:35 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:45:35 [INFO] Banco de dados em uso: /tmp/votacao_persist_44625.db
+2026-10-16 12:45:35 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-16 12:45:36 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-16 12:45:36 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:45:36 [INFO] Banco de dados em uso: /tmp/dbtest_44838/a/b/c/votacao.db
+2026-10-16 12:45:39 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-16 12:45:39 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:45:39 [INFO] Banco de dados em uso: /tmp/dbtest_44838/rel/dados/votacao.db
+2026-10-16 12:45:42 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-16 12:45:42 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:45:42 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 12:45:42 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_44838/ro/votacao.db
+2026-10-16 12:45:45 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-16 12:45:45 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:45:45 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 12:45:45 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_44838/regular/sub/votacao.db
+2026-10-16 12:48:11 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:48:11 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:48:11 [INFO] Banco de dados em uso: /tmp/votacao_persist_46135.db
+2026-10-16 12:48:12 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-16 12:48:12 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:48:13 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:48:13 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:48:13 [INFO] Banco de dados em uso: /tmp/votacao_persist_46135.db
+2026-10-16 12:48:13 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:48:14 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:48:14 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:48:14 [INFO] Banco de dados em uso: /tmp/votacao_persist_46135.db
+2026-10-16 12:48:14 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-16 12:54:40 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5055
+2026-10-16 12:54:40 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 12:54:40 [INFO] Banco de dados em uso: /tmp/votacao_e2e_49699.db
+2026-10-16 12:54:40 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 12:54:40 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
+2026-10-16 12:54:40 [INFO] Plebiscito #1 criado (encerra #-): 'Aprova o novo turno?'
+2026-10-16 12:54:43 [INFO] Contadores do plebiscito #1 zerados (clear_voters=True).
+2026-10-16 12:54:43 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:54:43 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:54:43 [WARNING] Encerramento do plebiscito #1 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:54:43 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:54:43 [INFO] Plebiscito #2 criado (encerra #1): 'Cabines?'
+2026-10-16 12:54:43 [INFO] Cabine registrada: Cabine 01 (cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:54:43 [INFO] Cabine registrada: Cabine 02 (cab-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:54:43 [INFO] Heartbeat da cabine cab-A (status=idle, IP=127.0.0.1)
+2026-10-16 12:54:43 [INFO] Plebiscito #3 criado (encerra #2): 'Aprova a Ata?'
+2026-10-16 12:54:43 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/report - IP 127.0.0.1
+2026-10-16 12:54:43 [INFO] Plebiscito #3 encerrado.
+2026-10-16 12:54:43 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 12:54:43 [INFO] Pareamento de cabines: PIN de pareamento: 195766
+2026-10-16 12:54:43 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 10.20.30.40 - novo token de pareamento emitido
+2026-10-16 12:54:43 [INFO] Cabine registrada: Cabine 03 (pair-A) via IP 127.0.0.1
+2026-10-16 12:54:43 [INFO] Heartbeat da cabine pair-A (status=idle, IP=10.20.30.40)
+2026-10-16 12:54:43 [INFO] Cabine removida (deregistro): pair-A
+2026-10-16 12:54:43 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 12:54:43 [INFO] Cabine registrada: Cabine 03 (pair-B) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:54:44 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5091
+2026-10-16 12:54:44 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:54:44 [INFO] Banco de dados em uso: /tmp/dbtest_49950/a/b/c/votacao.db
+2026-10-16 12:54:47 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5092
+2026-10-16 12:54:47 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:54:47 [INFO] Banco de dados em uso: /tmp/dbtest_49950/rel/dados/votacao.db
+2026-10-16 12:54:50 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5093
+2026-10-16 12:54:50 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:54:50 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 12:54:50 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_49950/ro/votacao.db
+2026-10-16 12:54:53 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5094
+2026-10-16 12:54:53 [INFO] DEVICE_TOKEN ativo: t
+2026-10-16 12:54:53 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/voting.db
+2026-10-16 12:54:53 [WARNING] Fallback de banco em uso - VOTING_DB pedido: /tmp/dbtest_49950/regular/sub/votacao.db
+2026-10-16 12:54:56 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:54:56 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:54:56 [INFO] Banco de dados em uso: /tmp/votacao_persist_50122.db
+2026-10-16 12:54:56 [INFO] Plebiscito #1 criado (encerra #-): 'Pergunta persistente?'
+2026-10-16 12:54:56 [INFO] Cabine registrada: Cabine 01 (persist-cab-A) via IP 127.0.0.1 - novo token de pareamento emitido
+2026-10-16 12:54:57 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:54:57 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:54:57 [INFO] Banco de dados em uso: /tmp/votacao_persist_50122.db
+2026-10-16 12:54:57 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:54:58 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:54:58 [INFO] DEVICE_TOKEN ativo: persisttoken456
+2026-10-16 12:54:58 [INFO] Banco de dados em uso: /tmp/votacao_persist_50122.db
+2026-10-16 12:54:58 [INFO] Plebiscito #2 criado (encerra #1): 'Corrida?'
+2026-10-16 12:54:59 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5056
+2026-10-16 12:54:59 [INFO] DEVICE_TOKEN ativo: testtoken123
+2026-10-16 12:54:59 [INFO] Banco de dados em uso: /tmp/votacao_hist_50305.db
+2026-10-16 12:54:59 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/history - IP 127.0.0.1
+2026-10-16 12:54:59 [INFO] Plebiscito #1 criado (encerra #-): 'Primeiro plebiscito'
+2026-10-16 12:54:59 [INFO] Plebiscito #2 criado (encerra #1): 'Segundo plebiscito'
+2026-10-16 12:54:59 [INFO] Banco de dados purgado (scope=logs): 2 voto(s), 0 check-in(s), 0 plebiscito(s) removido(s).
+2026-10-16 12:54:59 [INFO] Banco de dados purgado (scope=all): 0 voto(s), 0 check-in(s), 2 plebiscito(s) removido(s).
+2026-10-16 12:55:00 [INFO] Plebiscito #1 criado (encerra #-): 'Pos-purga'
+2026-10-16 12:55:00 [WARNING] Falha de autenticacao admin (401) em DELETE /api/admin/polls/1 - IP 127.0.0.1
+2026-10-16 12:55:00 [INFO] Plebiscito 1 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:55:00 [INFO] Plebiscito #2 criado (encerra #-): 'Alfa'
+2026-10-16 12:55:00 [INFO] Plebiscito #3 criado (encerra #2): 'Beta'
+2026-10-16 12:55:00 [INFO] Plebiscito 2 excluido (1 voto(s) removido(s)).
+2026-10-16 12:55:00 [INFO] Plebiscito 3 excluido - era o ativo (0 voto(s) removido(s)).
+2026-10-16 12:55:00 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/settings/queue-threshold - IP 127.0.0.1
+2026-10-16 12:55:00 [INFO] Limite de fila do check-in ajustado para 3 (IP 127.0.0.1).
+2026-10-16 12:55:00 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/backup/download - IP 127.0.0.1
+2026-10-16 12:55:00 [INFO] Backup do banco gerado: votacao_backup_20261016_155500.db (IP 127.0.0.1).
+2026-10-16 12:55:00 [INFO] Backup do banco gerado: votacao_backup_20261016_155500.db (IP 127.0.0.1).
+2026-10-16 12:55:00 [INFO] Plebiscito #4 criado (encerra #-): 'Pre-backup'
+2026-10-16 12:55:00 [INFO] Backup do banco gerado: votacao_backup_20261016_155500.db (IP 127.0.0.1).
+2026-10-16 12:55:00 [WARNING] Restauracao recusada: arquivo invalido (file is not a database).
+2026-10-16 12:55:00 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:55:01 [INFO] Banco de dados RESTAURADO a partir de 'votacao_backup_snap_50305.db' (IP 127.0.0.1). Estado volatil reiniciado (cabines ociosas, fila zerada).
+2026-10-16 12:55:01 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:55:01 [WARNING] Purga recusada (403): verificacao secundaria invalida - scope=all IP 127.0.0.1
+2026-10-16 12:55:01 [INFO] Banco de dados purgado (scope=all): 1 voto(s), 1 check-in(s), 1 plebiscito(s) removido(s).
+2026-10-16 12:55:01 [INFO] Plebiscito #1 criado (encerra #-): 'Auditoria'
+2026-10-16 12:55:01 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/verify - IP 127.0.0.1
+2026-10-16 12:55:01 [INFO] Plebiscito #1 encerrado.
+2026-10-16 12:55:02 [WARNING] Falha de autenticacao admin (401) em Ata de fechamento - IP 127.0.0.1
+2026-10-16 12:55:02 [INFO] Plebiscito #2 criado (encerra #1): 'Plebiscito com PIN'
+2026-10-16 12:55:02 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/db/inspect - IP 127.0.0.1
+2026-10-16 12:55:03 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/audit - IP 127.0.0.1
+2026-10-16 12:55:03 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:55:03 [WARNING] Encerramento do plebiscito #2 negado (PIN invalido) - IP 127.0.0.1
+2026-10-16 12:55:03 [INFO] Pareamento de cabines: PIN de pareamento: 084578
+2026-10-16 12:55:03 [INFO] Pareamento de cabines: Pareamento de cabines desativado.
+2026-10-16 12:55:03 [INFO] Plebiscito #2 encerrado.
+2026-10-19 03:54:48 [INFO] Servidor iniciado (Production (Waitress)) - bind 0.0.0.0:5000
+2026-10-19 03:54:48 [INFO] DEVICE_TOKEN ativo: P0dUxR3H-pdIrUh5zo1uFi1Tzr2Z2x2p (gerado automaticamente - defina DEVICE_TOKEN para fixar)
+2026-10-19 03:54:48 [INFO] Banco de dados em uso: /home/marcinho/Músicas/votacoes/votacao.db
+2026-10-19 03:55:22 [WARNING] Falha de autenticacao admin (401) em GET /api/admin/state - IP 127.0.0.1
