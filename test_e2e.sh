@@ -272,6 +272,51 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/booth/register"
   -H 'Content-Type: application/json' -d '{"booth_id":"pair-B"}')
 check "apos desativar, registro aberto -> 200" "200" "$code"
 
+echo "== 13. Check-in aponta cabine especifica (inclusive com uma unica cabine) =="
+# Novo plebiscito para zerar a fila de tokens das secoes anteriores.
+curl -s -H "X-Device-Token: $TOKEN" -X POST "$BASE/api/admin/poll" -H 'Content-Type: application/json' \
+  -d '{"question":"Cabine unica?","options":["Sim","Nao"]}' >/dev/null
+
+# Mantem apenas a Cabine 01 conectada (remove as demais cabines registradas).
+curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/booths/cab-B" >/dev/null
+curl -s -X DELETE -H "X-Device-Token: $TOKEN" "$BASE/api/admin/booths/pair-B" >/dev/null
+
+# Garante a unica cabine online e ociosa.
+resp=$(curl -s -X POST "$BASE/api/booth/heartbeat" -H 'Content-Type: application/json' \
+  -d '{"booth_id":"cab-A","status":"idle"}')
+echo "$resp" | grep -q '"label":"Cabine 01"'; check "unica cabine conectada e a Cabine 01" "0" "$?"
+
+# 1o check-in: cabine ociosa -> reserva dirigida e rotulo ESPECIFICO.
+resp=$(curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"UNICA-1"}')
+check "1o check-in: booth.label = Cabine 01" "Cabine 01" \
+  "$(printf '%s' "$resp" | jget 'd["booth"]["label"]')"
+check "1o check-in: booth_label = Cabine 01" "Cabine 01" \
+  "$(printf '%s' "$resp" | jget 'd["booth_label"]')"
+check "1o check-in: cabine reservada" "True" \
+  "$(printf '%s' "$resp" | jget 'd["reserved"]')"
+check "1o check-in: instrucao aponta a Cabine 01" "True" \
+  "$(printf '%s' "$resp" | jget '"Cabine 01" in d["instruction"]')"
+
+# 2o check-in com a UNICA cabine ocupada: continua apontando a Cabine 01
+# (antes retornava booth=null e "Dirija-se a qualquer cabine disponivel").
+resp=$(curl -s -X POST "$BASE/api/checkin" -H 'Content-Type: application/json' -d '{"badge_id":"UNICA-2"}')
+check "2o check-in: booth.label mantem Cabine 01" "Cabine 01" \
+  "$(printf '%s' "$resp" | jget 'd["booth"]["label"]')"
+check "2o check-in: booth_label mantem Cabine 01" "Cabine 01" \
+  "$(printf '%s' "$resp" | jget 'd["booth_label"]')"
+check "2o check-in: nao reserva a cabine de novo" "False" \
+  "$(printf '%s' "$resp" | jget 'd["reserved"]')"
+check "2o check-in: instrucao aponta a Cabine 01" "True" \
+  "$(printf '%s' "$resp" | jget '"Cabine 01" in d["instruction"]')"
+check "2o check-in: sem fallback generico" "False" \
+  "$(printf '%s' "$resp" | jget '"qualquer cabine" in d["instruction"].lower()')"
+
+# A tela usa booth_label/reserved da API e nao possui mais o fallback "LIVRE".
+grep -q 'data.booth_label' static/js/checkin.js
+check "checkin.js exibe booth_label retornado pela API" "0" "$?"
+grep -q "|| 'LIVRE'" static/js/checkin.js
+check "checkin.js nao usa mais o banner LIVRE" "1" "$?"
+
 echo
 echo "RESULTADO: $pass passaram, $fail falharam"
 kill $SRV 2>/dev/null

@@ -1414,6 +1414,32 @@ def allocate_booth(db: sqlite3.Connection) -> Optional[dict]:
     return {"id": row["booth_id"], "number": row["number"], "label": row["label"]}
 
 
+def suggest_booth(db: sqlite3.Connection) -> Optional[dict]:
+    """Cabine ONLINE de referencia quando nenhuma esta ociosa.
+
+    Diferente de :func:`allocate_booth`, NAO reserva a cabine: o token segue na
+    fila e sera assumido pela propria cabine quando ela ficar ociosa. Serve
+    apenas para o check-in devolver um destino ESPECIFICO (ex.: "Cabine 01")
+    em vez do fallback generico "qualquer cabine disponivel" — essencial
+    quando existe uma unica cabine conectada, que passa a maior parte do tempo
+    ocupada. Prefere a cabine que sera liberada primeiro (menor ``busy_until``)
+    e, em empate, a de menor numero.
+
+    Retorna {id, number, label} ou None quando nao ha cabine online.
+    """
+    cutoff = _iso_cutoff(BOOTH_TIMEOUT_SECONDS)
+    now = now_iso()
+    row = db.execute(
+        "SELECT * FROM booths WHERE last_seen > ? "
+        "ORDER BY CASE WHEN busy_until IS NULL OR busy_until <= ? THEN 0 ELSE 1 END, "
+        "busy_until ASC, number ASC LIMIT 1",
+        (cutoff, now),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"id": row["booth_id"], "number": row["number"], "label": row["label"]}
+
+
 def _client_ip() -> str:
     """IP do cliente que originou a requisicao.
 
@@ -1533,7 +1559,11 @@ def api_checkin():
       2. O cracha ja votou?              Senao -> 'already_voted'.
       3. Registra o cracha e incrementa voting_tokens += 1.
       4. Reserva a proxima cabine online e ociosa (menor numero) e devolve
-         seu rotulo em 'instruction' (ou o fallback generico, se nao houver).
+         seu rotulo em 'instruction'/'booth_label' (com reserved=True). Se
+         nenhuma estiver ociosa, aponta a cabine online que sera liberada
+         primeiro (reserved=False) — nunca cai em "LIVRE" enquanto houver
+         ao menos uma cabine conectada. O fallback generico so aparece sem
+         cabines online.
 
     A prevencao real de voto duplo esta no banco (PK em voters); o cooldown
     do front-end e apenas uma protecao extra contra duplo-swap do leitor.
@@ -1573,10 +1603,20 @@ def api_checkin():
         tokens = set_voting_tokens(db, get_voting_tokens(db) + 1)
         # Reserva a proxima cabine online/ociosa na MESMA transacao do token.
         booth = allocate_booth(db)
+        reserved = booth is not None
+        if booth is None:
+            # Nenhuma cabine ociosa: ainda assim devolve um destino ESPECIFICO
+            # (a cabine online que sera liberada primeiro) em vez de "LIVRE".
+            booth = suggest_booth(db)
         db.commit()
 
-    if booth is not None:
-        instruction = f"Liberado! Dirija-se à {booth['label']}."
+    booth_label = booth["label"] if booth is not None else None
+    if booth is not None and reserved:
+        instruction = f"Liberado! Dirija-se à {booth_label}."
+    elif booth is not None:
+        instruction = (
+            f"Liberado! Dirija-se à {booth_label} e aguarde a liberação."
+        )
     else:
         instruction = "Liberado! Dirija-se a qualquer cabine disponível."
 
@@ -1584,6 +1624,8 @@ def api_checkin():
         {"ok": True, "status": "authorized",
          "voting_tokens": tokens,
          "booth": booth,
+         "booth_label": booth_label,
+         "reserved": reserved,
          "instruction": instruction,
          "detail": "Cracha liberado. Dirija-se a uma cabine."}
     )

@@ -129,9 +129,13 @@ token, apenas uma é aceita.
    crachá; o leitor NFC digita o número + `Enter`. O sistema valida no SQLite,
    incrementa a fila global `voting_tokens` e **aloca a próxima cabine ociosa**,
    respondendo com a orientação personalizada (ex.: *"Liberado! Dirija-se à
-   Cabine 02."*). Sem cabines online/idle, cai no fallback genérico (*"Dirija-se
-   a qualquer cabine disponível."*). Um **bipe agudo** confirma a liberação; um
-   **zumbido grave** sinaliza erro (crachá já votou, etc.).
+   Cabine 02."*). Se **todas as cabines online estiverem ocupadas**, a resposta
+   ainda aponta a cabine que será liberada primeiro (ex.: *"Liberado! Dirija-se
+   à Cabine 01 e aguarde a liberação."*), inclusive quando existe **uma única
+   cabine** conectada. O fallback genérico (*"Dirija-se a qualquer cabine
+   disponível."*) só aparece quando **nenhuma cabine está online**. Um **bipe
+   agudo** confirma a liberação; um **zumbido grave** sinaliza erro (crachá já
+   votou, etc.).
    * Cooldown de 2s no front-end + PK no banco = **nenhum voto duplo**.
    * **Alerta de Fila Cheia:** quando a fila atinge o
      **`queue_warning_threshold`** (padrão 5, ajustável em `/admin`), a tela
@@ -180,7 +184,7 @@ token, apenas uma é aceita.
 ### Públicas / cabines
 | Método | Rota                    | Descrição                                            |
 |--------|-------------------------|------------------------------------------------------|
-| POST   | `/api/checkin`          | `{badge_id}` → valida, incrementa token e aloca cabine. |
+| POST   | `/api/checkin`          | `{badge_id}` → valida, incrementa token e aloca cabine. Retorna `booth`, `booth_label`, `reserved` e `instruction` (cabine específica, mesmo ocupada). |
 | GET    | `/api/booth/status`     | Tokens, estado do plebiscito e `queue_warning_threshold`. Com `?booth_id=…`, informa `assigned`/`booth`. |
 | POST   | `/api/booth/register`   | `{booth_id, pairing_pin?, pairing_token?}` → registra/pareia a cabine e devolve número/rótulo (+ `pairing_token` quando emitido). |
 | POST   | `/api/booth/heartbeat`  | `{booth_id, status?}` → mantém `online`, grava o IP do cliente; `status:"idle"` libera a reserva. |

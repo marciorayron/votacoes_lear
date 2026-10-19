@@ -10,6 +10,7 @@ const badgeView   = document.getElementById('badge-view');
 const progress    = document.getElementById('progress');
 const cooldownLbl = document.getElementById('cooldown-label');
 const boothBanner = document.getElementById('booth-banner');
+const boothCap    = document.getElementById('booth-cap');
 const boothNumber = document.getElementById('booth-number');
 const boothSub    = document.getElementById('booth-sub');
 const panel       = document.getElementById('checkin-panel');
@@ -86,12 +87,33 @@ function setStatus(kind, msg, sub) {
   statusSub.textContent = sub || '';
 }
 
+// Extrai o rotulo da cabine de forma tolerante (label, nome ou numero).
+function boothLabel(booth, fallbackLabel) {
+  if (booth) {
+    if (booth.label) return String(booth.label);
+    if (booth.name) return String(booth.name);
+    if (booth.number !== undefined && booth.number !== null) {
+      return 'Cabine ' + String(booth.number).padStart(2, '0');
+    }
+  }
+  return fallbackLabel ? String(fallbackLabel) : '';
+}
+
 // Destaca a cabine alocada em fonte gigante (leitura a distancia).
-function showBoothBanner(booth, instruction) {
-  const label = (booth && booth.label) ? String(booth.label).toUpperCase() : '';
-  boothNumber.textContent = label || 'LIVRE';
+// `opts.reserved === false` = cabine especifica ainda ocupada (fila): o
+// eleitor deve se dirigir a ela e aguardar a liberacao.
+function showBoothBanner(booth, instruction, opts) {
+  const options = opts || {};
+  const label = boothLabel(booth, options.label).toUpperCase();
+  const waiting = options.reserved === false;
+  boothCap.textContent = label
+    ? (waiting ? 'Aguarde a liberação da' : 'Dirija-se à')
+    : 'Dirija-se a';
+  boothNumber.textContent = label || 'QUALQUER CABINE';
   boothSub.textContent = instruction || (label
-    ? 'Dirija-se a esta cabine para votar.'
+    ? (waiting
+        ? 'A cabine será liberada assim que o eleitor anterior concluir.'
+        : 'Dirija-se a esta cabine para votar.')
     : 'Dirija-se a qualquer cabine disponível.');
   boothBanner.classList.add('show');
 }
@@ -174,7 +196,10 @@ async function submitBadge(raw) {
 
     if (resp.ok && data.ok) {
       beepSuccess();
-      showBoothBanner(data.booth, data.instruction);
+      showBoothBanner(data.booth, data.instruction, {
+        label: data.booth_label,
+        reserved: data.reserved
+      });
       setStatus('ok', 'Liberado para votar ✅',
                 data.instruction || 'Dirija-se a uma cabine de votação.');
     } else if (data.status === 'already_voted') {
